@@ -1,0 +1,6 @@
+requests
+selenium
+discord.py>=1.0
+python-dotenv
+asyncio
+webdriver-manager

@@ -1,0 +1,22 @@
+{
+    "start_game": "워들 게임을 시작합니다! 5글자 단어를 입력하세요.",
+    "end_game": "워들 세션을 종료했습니다. 다음 입력 시 이어서 진행할 수 있습니다.",
+    "already_played": "오늘은 이미 플레이했습니다!",
+    "no_play_record" : "아직 플레이 기록이 없습니다!",
+    "invalid_word": "5글자 단어를 입력하세요.",
+    "correct_guess1": "축하합니다! 정답입니다! 🎉",
+    "correct_guess2": "오늘의 단어는 `{word}` 였습니다.",
+    "game_over": "아쉽네요! 6번의 기회를 모두 사용했습니다. 오늘의 단어는 `{word}` 였습니다.",
+    "remaining_attempts": "남은 기회: {attempts}번",
+    "no_session": "진행 중인 세션이 없습니다.",
+    "not_allowed_channel": "이 채널에서는 워들을 플레이할 수 없습니다. 올바른 채널에서 시도하세요!",
+    "channel_set": "이 채널이 워들 채널로 설정되었습니다!",
+    "stats": "**{username}** 님의 통계:\\n총 게임 수: {games_played}\\n승리 수: {wins}\\n현재 연속 성공 일수: {current_streak}\\n최대 연속 성공 일수: {max_streak}",
+    "leaderboard_title": "🏆 **워들 서버 랭킹** 🏆",
+    "leaderboard_entry": "{rank}. {username} - 승리 {wins}회, 현재 연속 {streak}일",
+    "no_leaderboard_data" : "아직 데이터가 없습니다.",
+    "not_in_wordle_list" : "올바른 단어가 아닙니다.", 
+    "not_started": "오늘 워들을 플레이한 적이 없습니다.",
+    "already_solved": "이미 오늘 워들을 플레이했습니다."
+  }
+  
