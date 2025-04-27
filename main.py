@@ -19,7 +19,6 @@ TODAYS_WORD = ""
 
 user_data = {}
 sessions = {}
-channel_settings = {}
 
 # ========== 불러오기 ==========
 with open('messages.json', 'r', encoding='utf-8') as f:
@@ -385,7 +384,7 @@ async def share(interaction: discord.Interaction) :
 async def show_current_progress(interaction: discord.Interaction):
     key = (interaction.guild_id, interaction.user.id)
     today = str(datetime.today().date())
-    if key not in sessions or user_data.get(key, {}).get("last_play_date") != today:
+    if user_data.get(key, {}).get("last_play_date") != today:
         await interaction.response.send_message(messages['not_started'], ephemeral=True)
         return
     elif key not in sessions and user_data[key]["done_today"] :
@@ -414,9 +413,12 @@ async def show_current_progress(interaction: discord.Interaction):
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def reset(interaction: discord.Interaction):
     guid = interaction.guild_id
+    global user_data, sessions
     csvpath = DATA_FOLDER + '/' + str(guid) + '.csv'
     try:
         os.remove(csvpath)
+        user_data = {}
+        sessions = {}
         await interaction.response.send_message(messages["rmdir"], ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(messages["rmdirfail"], ephemeral=True)
