@@ -17,6 +17,9 @@
     "no_leaderboard_data" : "아직 데이터가 없습니다.",
     "not_in_wordle_list" : "올바른 단어가 아닙니다.", 
     "not_started": "오늘 워들을 플레이한 적이 없습니다.",
-    "already_solved": "이미 오늘 워들을 플레이했습니다."
+    "already_solved": "이미 오늘 워들을 플레이했습니다.",
+    "rmdir": "성공적으로 서버 기록을 초기화했습니다.",
+    "rmdirfail": "오류로 서버 기록이 초기화되지 않았습니다.",
+    "rmdirnoperm": "권한이 없습니다."
   }
   

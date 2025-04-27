@@ -353,10 +353,14 @@ async def share(interaction: discord.Interaction) :
     member = interaction.guild.get_member(interaction.user.id)
     name = member.display_name if member else "Unknown"
     today = str(datetime.today().date())
-    if key not in sessions or user_data.get(key, {}).get("last_play_date") != today:
+    if user_data.get(key, {}).get("last_play_date") != today:
         await interaction.response.send_message(messages['not_started'], ephemeral=True)
         return
-    session = sessions[key]
+    elif key not in sessions and user_data[key]["done_today"] :
+        # done today -> so print
+        session = user_data[key]
+    else :
+        session = sessions[key]
     board_text = ""
     empty_row = "".join([':black_large_square:' for _ in range(5)])
     results = parse_board_colors(session["board"])
@@ -384,8 +388,11 @@ async def show_current_progress(interaction: discord.Interaction):
     if key not in sessions or user_data.get(key, {}).get("last_play_date") != today:
         await interaction.response.send_message(messages['not_started'], ephemeral=True)
         return
-
-    session = sessions[key]
+    elif key not in sessions and user_data[key]["done_today"] :
+        # done today -> so print
+        session = user_data[key]
+    else :
+        session = sessions[key]
 
     board_text = ""
     empty_row = "".join([':black_large_square:' for _ in range(5)])
@@ -403,13 +410,39 @@ async def show_current_progress(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+@tree.command(name="reset", description="Admin만 사용가능, 서버의 기록을 초기화합니다.")
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def reset(interaction: discord.Interaction):
+    guid = interaction.guild_id
+    csvpath = DATA_FOLDER + '/' + str(guid) + '.csv'
+    try:
+        os.remove(csvpath)
+        await interaction.response.send_message(messages["rmdir"], ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"{messages["rmdirfail"]} : {e}", ephemeral=True)
+
+# 권한 없는 사람이 썼을 때 에러 핸들링
+@reset.error
+async def reset(interaction: discord.Interaction, e):
+    if isinstance(e, discord.app_commands.errors.MissingPermissions):
+        await interaction.response.send_message(messages["rmdirnoperm"], ephemeral=True)
+    else:
+        await interaction.response.send_message(f"{messages["rmdirfail"]} : {e}", ephemeral=True)
+
+
+
+
 
 @tree.command(name="stats", description="자신의 통계 정보를 확인합니다.")
-async def show_stats(interaction: discord.Interaction):
+async def show_stats(interaction: discord.Interaction, share = False):
     key = (interaction.guild_id, interaction.user.id)
     data = user_data.get(key)
+    eph = not share
 
     if not data:
+        await interaction.response.send_message(messages["no_play_record"], ephemeral=True)
+        return
+    elif data['games_played'] == 0 :
         await interaction.response.send_message(messages["no_play_record"], ephemeral=True)
         return
 
@@ -423,12 +456,12 @@ async def show_stats(interaction: discord.Interaction):
     hist_out = render_histogram(user_data[key])
     hist_value = ":one: | " + ":green_square:" * hist_out[0] + "\n" +":two: | " + ":green_square:" * hist_out[1] + "\n"":three: | " + ":green_square:" * hist_out[3] + "\n"":four: | " + ":green_square:" * hist_out[3] + "\n"":five: | " + ":green_square:" * hist_out[4] + "\n"":six: | " + ":green_square:" * hist_out[5] + "\n"
     embed.add_field(name=":bar_chart: Histograms", value=hist_value, inline=False)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=eph)
     return
 
 
 @tree.command(name="leaderboard", description="서버 리더보드를 확인합니다.")
-async def leaderboard(interaction: discord.Interaction):
+async def leaderboard(interaction: discord.Interaction, share=False):
     guild_users = [(uid, data) for (gid, uid), data in user_data.items() if gid == interaction.guild_id]
     if not guild_users:
         await interaction.response.send_message(messages["no_leaderboard_data"], ephemeral=True)
@@ -444,6 +477,8 @@ async def leaderboard(interaction: discord.Interaction):
     )
 
     for idx, (uid, data) in enumerate(guild_users[:10], start=1):
+        if data['games_played'] == 0 :
+            continue
         member = interaction.guild.get_member(uid)
         name = member.display_name if member else "Unknown"
         value = f"🏅 W : {data['wins']} | 🔥 CS : {data['current_streak']} | :chart_with_upwards_trend: WR : {round(data['wins']/data['games_played'] * 100, 2)} %"
@@ -452,8 +487,8 @@ async def leaderboard(interaction: discord.Interaction):
             value=value,
             inline=False
         )
-
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    eph = not share
+    await interaction.response.send_message(embed=embed, ephemeral=eph)
     return
 
 
