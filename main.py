@@ -434,7 +434,7 @@ async def reset(interaction: discord.Interaction, e):
 
 
 @tree.command(name="stats", description="자신의 통계 정보를 확인합니다.")
-async def show_stats(interaction: discord.Interaction, share = False):
+async def show_stats(interaction: discord.Interaction, share : bool = False):
     key = (interaction.guild_id, interaction.user.id)
     data = user_data.get(key)
     eph = not share
@@ -461,7 +461,7 @@ async def show_stats(interaction: discord.Interaction, share = False):
 
 
 @tree.command(name="leaderboard", description="서버 리더보드를 확인합니다.")
-async def leaderboard(interaction: discord.Interaction, share=False):
+async def leaderboard(interaction: discord.Interaction, share : bool = False):
     guild_users = [(uid, data) for (gid, uid), data in user_data.items() if gid == interaction.guild_id]
     if not guild_users:
         await interaction.response.send_message(messages["no_leaderboard_data"], ephemeral=True)
