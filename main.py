@@ -419,7 +419,7 @@ async def reset(interaction: discord.Interaction):
         os.remove(csvpath)
         await interaction.response.send_message(messages["rmdir"], ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f"{messages["rmdirfail"]} : {e}", ephemeral=True)
+        await interaction.response.send_message(messages["rmdirfail"], ephemeral=True)
 
 # 권한 없는 사람이 썼을 때 에러 핸들링
 @reset.error
@@ -427,7 +427,7 @@ async def reset(interaction: discord.Interaction, e):
     if isinstance(e, discord.app_commands.errors.MissingPermissions):
         await interaction.response.send_message(messages["rmdirnoperm"], ephemeral=True)
     else:
-        await interaction.response.send_message(f"{messages["rmdirfail"]} : {e}", ephemeral=True)
+        await interaction.response.send_message(messages["rmdirfail"], ephemeral=True)
 
 
 
