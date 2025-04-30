@@ -60,6 +60,16 @@ def render_histogram(data: dict):
     
     return output
 
+def calculate_mean(data: dict):
+    keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
+    if sum(values) == 0 :
+        return 0
+    values = [data.get(k, 0) for k in keys]
+    rtn = 0.0
+    for idx, values in enumerate(values) :
+        rtn += (idx+1) * values     
+    return rtn / sum(values)
+
 
 def lettercolor2emoji(letter, color):
     l = letter.upper()
@@ -452,11 +462,12 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
         title=f"📊 {interaction.user.display_name} 님의 워들 통계",
         color=discord.Color.green()
     )
+    avg_perf = calculate_mean(user_data[key])
     name = "플레이어 통계"
-    value = ":video_game: 총 게임 수 : " + str(data['games_played']) + "\n:trophy: 승리 수 : " + str(data['wins']) + "\n:fire: 현재 연속 성공 일수 : " + str(data['current_streak']) + "\n:medal: 최대 연속 성공 일수 : " + str(data['max_streak']) + "\n:chart_with_upwards_trend: 승률 : " + str(round(data['wins'] / data['games_played'] * 100, 2)) + "%"
+    value = ":video_game: 총 게임 수 : " + str(data['games_played']) + "\n:trophy: 승리 수 : " + str(data['wins']) + "\n:fire: 현재 연속 성공 일수 : " + str(data['current_streak']) + "\n:medal: 최대 연속 성공 일수 : " + str(data['max_streak']) + "\n:chart_with_upwards_trend: 승률 : " + str(round(data['wins'] / data['games_played'] * 100, 2)) + "%" + "\n:pushpin: 승리시 평균점수 : " + str(round(avg_perf, 2))
     embed.add_field(name=name, value=value, inline=False)
     hist_out = render_histogram(user_data[key])
-    hist_value = ":one: | " + ":green_square:" * hist_out[0] + "\n" +":two: | " + ":green_square:" * hist_out[1] + "\n"":three: | " + ":green_square:" * hist_out[3] + "\n"":four: | " + ":green_square:" * hist_out[3] + "\n"":five: | " + ":green_square:" * hist_out[4] + "\n"":six: | " + ":green_square:" * hist_out[5] + "\n"
+    hist_value = ":one: | " + ":green_square:" * hist_out[0] + "\n" +":two: | " + ":green_square:" * hist_out[1] + "\n"":three: | " + ":green_square:" * hist_out[2] + "\n"":four: | " + ":green_square:" * hist_out[3] + "\n"":five: | " + ":green_square:" * hist_out[4] + "\n"":six: | " + ":green_square:" * hist_out[5] + "\n"
     embed.add_field(name=":bar_chart: Histograms", value=hist_value, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=eph)
     return
@@ -481,9 +492,10 @@ async def leaderboard(interaction: discord.Interaction, share : bool = False):
     for idx, (uid, data) in enumerate(guild_users[:10], start=1):
         if data['games_played'] == 0 :
             continue
+        avg_perf = calculate_mean(data)
         member = interaction.guild.get_member(uid)
         name = member.display_name if member else "Unknown"
-        value = f"🏅 W : {data['wins']} | 🔥 CS : {data['current_streak']} | :chart_with_upwards_trend: WR : {round(data['wins']/data['games_played'] * 100, 2)} %"
+        value = f"🏅 W : {data['wins']} | 🔥 CS : {data['current_streak']} | :chart_with_upwards_trend: WR : {round(data['wins']/data['games_played'] * 100, 2)} % | :pushpin: AVG : {round(avg_perf, 2)}"
         embed.add_field(
             name=f"#{idx} {name}",
             value=value,
