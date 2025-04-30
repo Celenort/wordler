@@ -62,9 +62,9 @@ def render_histogram(data: dict):
 
 def calculate_mean(data: dict):
     keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
+    values = [data.get(k, 0) for k in keys]
     if sum(values) == 0 :
         return 0
-    values = [data.get(k, 0) for k in keys]
     rtn = 0.0
     for idx, values in enumerate(values) :
         rtn += (idx+1) * values     
