@@ -66,8 +66,8 @@ def calculate_mean(data: dict):
     if sum(values) == 0 :
         return 0
     rtn = 0.0
-    for idx, values in enumerate(values) :
-        rtn += (idx+1) * values     
+    for idx, value in enumerate(values) :
+        rtn += (idx+1) * value     
     return rtn / sum(values)
 
 
