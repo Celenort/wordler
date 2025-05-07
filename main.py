@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from fetch import fetch_todays_word
 
 
-# ========== 기본 설정 ==========
+# ========== Global config ==========
 WORD_LIST_URL = "https://gist.githubusercontent.com/dracos/dd0668f281e685bad51479e5acaadb93/raw/"
 WORDLE_URL = "https://www.nytimes.com/games/wordle/index.html"
 DATA_FOLDER = "wordle_data"
@@ -20,13 +20,13 @@ TODAYS_WORD = ""
 user_data = {}
 sessions = {}
 
-# ========== 불러오기 ==========
+# ========== Load json ==========
 with open('messages.json', 'r', encoding='utf-8') as f:
     messages = json.load(f)
 with open('emoji.json', 'r', encoding='utf-8') as f:
     emojis = json.load(f)
 
-# ========== 디스코드 설정 ==========
+# ========== Discord config ==========
 intents = discord.Intents.default()
 intents.messages = True
 intents.members = True
@@ -36,16 +36,16 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client, fallback_to_global=False)
 
-# ========== 유틸 함수 ==========
+# ========== Utils ==========
 def render_histogram(data: dict):
-    # 1. n1~n6 정렬 순서대로 가져오기
+    # 1. n1~n6 
     keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
     values = [data.get(k, 0) for k in keys]
     
-    # 2. 최대값 찾기
+    # 2. find max
     max_val = max(values) if values else 1
 
-    # 3. 줄별 히스토그램 만들기
+    # 3. hist
     output = []
     for idx, val in enumerate(values):
         # 비율 계산
@@ -54,7 +54,7 @@ def render_histogram(data: dict):
         else:
             bar_count = int((val / max_val) * 8)
 
-        bar_count = max(bar_count, 1) if val > 0 else 0  # 값이 0이 아닌데 최소 1개는 표시
+        bar_count = max(bar_count, 1) if val > 0 else 0  # display at least 1 (with nonzero)
         
         output.append(bar_count)
     
@@ -127,17 +127,17 @@ import json
 import re
 
 def parse_board_colors(board):
-    # 1. JSON 문자열을 리스트로 변환
+    # 1. JSON chars to list
  
     results = []
 
-    # 2. 각 줄을 순회하면서
+    # 2. enumerating each row
     for line in board:
         colors = []
-        # 3. <:XXX:1234> 이런 패턴 찾기
+        # 3. <:XXX:1234> find patterns like this
         matches = re.findall(r'<:(.*?):\d+>', line)
         for match in matches:
-            # 4. 이모지 이름(XXX)의 마지막 글자만 따기
+            # 4. get last letter like XXX
             if match:
                 colors.append(match[-1])
         results.append(colors)
@@ -190,7 +190,7 @@ def save_user_data():
             ])
             writer.writeheader()
             for user in users:
-                # board, keyboard를 JSON 문자열로 변환해서 저장
+                # board, keyboard- > Json parsing
                 row = user.copy()
                 row["board"] = json.dumps(user.get("board", []))
                 row["keyboard"] = json.dumps(user.get("keyboard", {}))
@@ -204,8 +204,8 @@ async def start_daily_reset_task():
     tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     seconds_until_midnight = (tomorrow - now).total_seconds()
 
-    print(f"[INFO] 자정까지 남은 시간: {seconds_until_midnight:.0f}초")
-    await asyncio.sleep(seconds_until_midnight + 10)
+    print(f"[INFO] TIME until midnight: {seconds_until_midnight:.0f}초")
+    await asyncio.sleep(seconds_until_midnight)
 
     while True:
         global sessions
@@ -216,13 +216,13 @@ async def start_daily_reset_task():
 
 
 
-@tree.command(name="start", description="오늘의 워들을 시작합니다.")
+@tree.command(name="start", description=messages["desc_start"])
 async def start_game(interaction: discord.Interaction):
     key = (interaction.guild_id, interaction.user.id)
     today = str(datetime.today().date())
 
     if key not in user_data:
-        # 유저 초기화
+        # reset user
         user_data[key] = {
             "last_play_date": "",
             "current_streak": 0,
@@ -239,14 +239,14 @@ async def start_game(interaction: discord.Interaction):
     data = user_data[key]
 
     if data["last_play_date"] != today:
-        # 새로운 날짜면 진행 정보 초기화
+        # if new day, reset progress
         data["attempts"] = 0
         data["board"] = []
         data["keyboard"] = {}
         data["last_play_date"] = today
         data["done_today"] = False
 
-    # sessions 복구
+    # sessions recovery
     sessions[key] = {
         "attempts": data.get("attempts", 0),
         "board": data.get("board", ""),
@@ -267,9 +267,9 @@ async def start_game(interaction: discord.Interaction):
         board_text += empty_row + "\n"
 
     keyboard_text = render_keyboard(sessions[key]["keyboard"])
-    embed = discord.Embed(title="Wordle", color=0x00ff00)
-    embed.add_field(name="📋 진행상황", value=board_text, inline=False)
-    embed.add_field(name="⌨️ 키보드 상태", value=keyboard_text, inline=False)
+    embed = discord.Embed(title=messages["wordle"], color=0x00ff00)
+    embed.add_field(name=messages["status"], value=board_text, inline=False)
+    embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
     if board_text :
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
@@ -280,7 +280,7 @@ async def start_game(interaction: discord.Interaction):
 
 
 
-@tree.command(name="w", description="단어를 입력합니다.")
+@tree.command(name="w", description=messages["desc_write"])
 async def guess_word(interaction: discord.Interaction, word: str):
     key = (interaction.guild_id, interaction.user.id)
 
@@ -306,7 +306,7 @@ async def guess_word(interaction: discord.Interaction, word: str):
     session["board"].append(renderboard)
     session["attempts"] += 1
 
-    # 키보드 업데이트
+    # update_keyboard
     for idx, c in enumerate(word):
         if feedback[idx] == 'green':
             session["keyboard"][c] = 'green'
@@ -325,10 +325,10 @@ async def guess_word(interaction: discord.Interaction, word: str):
 
     keyboard_text = render_keyboard(session["keyboard"])
 
-    # 하나의 임베드로 합치기
-    embed = discord.Embed(title="Wordle", color=0x00ff00)
-    embed.add_field(name="📋 진행상황", value=board_text, inline=False)
-    embed.add_field(name="⌨️ 키보드 상태", value=keyboard_text, inline=False)
+    # concat with a single embed
+    embed = discord.Embed(title=messages["wordle"], color=0x00ff00)
+    embed.add_field(name=messages["status"], value=board_text, inline=False)
+    embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
 
 
     if word == TODAYS_WORD:
@@ -338,7 +338,7 @@ async def guess_word(interaction: discord.Interaction, word: str):
         user_data[key]["max_streak"] = max(user_data[key]["max_streak"], user_data[key]["current_streak"])
         user_data[key]["done_today"] = True
         sessions[key]["done"] = True
-        user_data[key]["n"+str(session["attempts"])] += 1
+        user_data[key]["n"+str(len(session["board"]))] += 1
         save_user_data()
         embed.add_field(name=messages['correct_guess1'],value=messages['correct_guess2'].format(word=TODAYS_WORD),  inline=False)
     elif session["attempts"] >= 6:
@@ -356,7 +356,7 @@ async def guess_word(interaction: discord.Interaction, word: str):
     await interaction.response.send_message(embed=embed, ephemeral=True)
     return
 
-@tree.command(name="share", description="게임 결과를 채팅방에 공유합니다.")
+@tree.command(name="share", description=messages["desc_share"])
 async def share(interaction: discord.Interaction) :
     key = (interaction.guild_id, interaction.user.id)
     member = interaction.guild.get_member(interaction.user.id)
@@ -390,7 +390,7 @@ async def share(interaction: discord.Interaction) :
 
     return
 
-@tree.command(name="status", description="현재 게임 진행상황을 표시합니다.")
+@tree.command(name="status", description=messages["desc_status"])
 async def show_current_progress(interaction: discord.Interaction):
     key = (interaction.guild_id, interaction.user.id)
     today = str(datetime.today().date())
@@ -413,13 +413,13 @@ async def show_current_progress(interaction: discord.Interaction):
 
     keyboard_text = render_keyboard(session["keyboard"])
 
-    embed = discord.Embed(title="워들 게임 진행상황", color=0x00ff00)
-    embed.add_field(name="📋 진행상황", value=board_text, inline=False)
-    embed.add_field(name="⌨️ 키보드 상태", value=keyboard_text, inline=False)
+    embed = discord.Embed(title=messages["wordle"], color=0x00ff00)
+    embed.add_field(name=messages["status"], value=board_text, inline=False)
+    embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@tree.command(name="reset", description="Admin만 사용가능, 서버의 기록을 초기화합니다.")
+@tree.command(name="reset", description=messages["desc_reset"])
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def reset(interaction: discord.Interaction):
     guid = interaction.guild_id
@@ -433,7 +433,7 @@ async def reset(interaction: discord.Interaction):
     except Exception as e:
         await interaction.response.send_message(messages["rmdirfail"], ephemeral=True)
 
-# 권한 없는 사람이 썼을 때 에러 핸들링
+# raise error when not permitted
 @reset.error
 async def reset(interaction: discord.Interaction, e):
     if isinstance(e, discord.app_commands.errors.MissingPermissions):
@@ -445,7 +445,7 @@ async def reset(interaction: discord.Interaction, e):
 
 
 
-@tree.command(name="stats", description="자신의 통계 정보를 확인합니다.")
+@tree.command(name="stats", description=messages["desc_stats"])
 async def show_stats(interaction: discord.Interaction, share : bool = False):
     key = (interaction.guild_id, interaction.user.id)
     data = user_data.get(key)
@@ -459,12 +459,12 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
         return
 
     embed = discord.Embed(
-        title=f"📊 {interaction.user.display_name} 님의 워들 통계",
+        title=messages["stats_title"].format(name=interaction.user.display_name),
         color=discord.Color.green()
     )
     avg_perf = calculate_mean(user_data[key])
-    name = "플레이어 통계"
-    value = ":video_game: 총 게임 수 : " + str(data['games_played']) + "\n:trophy: 승리 수 : " + str(data['wins']) + "\n:fire: 현재 연속 성공 일수 : " + str(data['current_streak']) + "\n:medal: 최대 연속 성공 일수 : " + str(data['max_streak']) + "\n:chart_with_upwards_trend: 승률 : " + str(round(data['wins'] / data['games_played'] * 100, 2)) + "%" + "\n:pushpin: 승리시 평균점수 : " + str(round(avg_perf, 2))
+    name = messages["player_stats"]
+    value = messages["stats"].format(played=str(data['games_played']), wins = str(data['wins']), streak = str(data['current_streak']), max_streak=str(data['max_streak']), wr = str(round(data['wins'] / data['games_played'] * 100, 2)), avg = str(round(avg_perf, 2)))
     embed.add_field(name=name, value=value, inline=False)
     hist_out = render_histogram(user_data[key])
     hist_value = ":one: | " + ":green_square:" * hist_out[0] + "\n" +":two: | " + ":green_square:" * hist_out[1] + "\n"":three: | " + ":green_square:" * hist_out[2] + "\n"":four: | " + ":green_square:" * hist_out[3] + "\n"":five: | " + ":green_square:" * hist_out[4] + "\n"":six: | " + ":green_square:" * hist_out[5] + "\n"
@@ -473,26 +473,31 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
     return
 
 
-@tree.command(name="leaderboard", description="서버 리더보드를 확인합니다.")
+@tree.command(name="leaderboard", description=messages["desc_leaderboard"])
 async def leaderboard(interaction: discord.Interaction, share : bool = False):
-    guild_users = [(uid, data) for (gid, uid), data in user_data.items() if gid == interaction.guild_id]
+    # pre-compute average
+    guild_users = [
+        (uid, data, calculate_mean(data))
+        for (gid, uid), data in user_data.items()
+        if gid == interaction.guild_id
+    ]
+
     if not guild_users:
         await interaction.response.send_message(messages["no_leaderboard_data"], ephemeral=True)
         return
 
-    # 정렬 기준: 승리수 → 연속 성공일수
-    guild_users.sort(key=lambda x: (-x[1]["wins"], -x[1]["current_streak"]))
+    # sort
+    guild_users.sort(key=lambda x: (-x[1]["wins"], x[2]))
 
     embed = discord.Embed(
-        title="🏆 워들 서버 랭킹 🏆",
-        description=f"서버: {interaction.guild.name}",
+        title=messages["leaderboard_title"],
+        description=messages["leaderboard_guild_name"].format(name=interaction.guild.name),
         color=discord.Color.gold()
     )
 
-    for idx, (uid, data) in enumerate(guild_users[:10], start=1):
-        if data['games_played'] == 0 :
+    for idx, (uid, data, avg_perf) in enumerate(guild_users[:10], start=1):
+        if data['games_played'] == 0:
             continue
-        avg_perf = calculate_mean(data)
         member = interaction.guild.get_member(uid)
         name = member.display_name if member else "Unknown"
         value = f"🏅 W : {data['wins']} | 🔥 CS : {data['current_streak']} | :chart_with_upwards_trend: WR : {round(data['wins']/data['games_played'] * 100, 2)} % | :pushpin: AVG : {round(avg_perf, 2)}"
@@ -501,12 +506,14 @@ async def leaderboard(interaction: discord.Interaction, share : bool = False):
             value=value,
             inline=False
         )
+
     eph = not share
     await interaction.response.send_message(embed=embed, ephemeral=eph)
     return
 
 
-# ========== 이벤트 ==========
+
+# ========== event ==========
 @client.event
 async def on_ready():
     global TODAYS_WORD
@@ -517,7 +524,7 @@ async def on_ready():
     asyncio.create_task(start_daily_reset_task())
     await tree.sync()
 
-# ========== 토큰 실행 (github secrets 등으로 관리) ==========
+# ========== run bot ==========
 client.run(os.environ.get("DISCORD_BOT_TOKEN"))
 
 
