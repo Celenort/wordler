@@ -215,7 +215,7 @@ async def start_daily_reset_task():
     seconds_until_midnight = (tomorrow - now).total_seconds()
 
     print(f"[INFO] TIME until midnight: {seconds_until_midnight:.0f}초")
-    await asyncio.sleep(seconds_until_midnight)
+    await asyncio.sleep(seconds_until_midnight+10)
 
     while True:
         global sessions
@@ -234,10 +234,16 @@ async def start_daily_reset_task():
 
         save_user_data()
 
+        temp = TODAYS_WORD
         TODAYS_WORD = fetch_todays_word()
-        sessions = {}
-
-        await asyncio.sleep(86400)
+        sessions = {} # reset sessions
+        fetchcount = 0
+        if temp == TODAYS_WORD :
+            await asyncio.sleep(10)
+            TODAYS_WORD = fetch_todays_word()
+            fetchcount +=1
+        await asyncio.sleep(86400-30*fetchcount)
+        fetchcount=0
 
 
 

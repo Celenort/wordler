@@ -28,13 +28,13 @@ def fetch_todays_word():
     driver = webdriver.Chrome(service=Service(executable_path=driver_path), options=options)
     driver.get("https://www.nytimes.com/games/wordle/index.html")
 
-    time.sleep(5)  # 페이지 로드 대기
+    time.sleep(10)  # 페이지 로드 대기
 
     # 맨 처음 뜨는 "We've updated our Terms" 팝업 닫기
     try:
         button = driver.find_element(By.CLASS_NAME, "purr-blocker-card__button")
         button.click()
-        time.sleep(2)
+        time.sleep(2.5)
         print(f"[INFO] 초기 팝업 제거")
     except Exception as e:
         print(f"[INFO] 초기 팝업이 없거나 무시함: {e}")
@@ -48,7 +48,7 @@ def fetch_todays_word():
             data_testid = btn.get_attribute("data-testid")
             if class_name and class_name.startswith("Welcome-module_button") and data_testid == "Play":
                 btn.click()
-                time.sleep(1)
+                time.sleep(2.5)
                 break
         print(f"[INFO] Play 버튼 클릭")
     except Exception as e:
@@ -62,7 +62,7 @@ def fetch_todays_word():
             if class_name and class_name.startswith("Skip-module_skipInfo"):
                 btn.click()
                 print("[INFO] 광고 Skip 버튼 클릭 완료")
-                time.sleep(1)
+                time.sleep(2.5)
                 break
     except Exception as e:
         print(f"[INFO] 광고 Skip 버튼 없음 또는 무시: {e}")
@@ -80,16 +80,16 @@ def fetch_todays_word():
     for _ in range(6):
         for letter in wrong_word:
             driver.find_element(By.TAG_NAME, "body").send_keys(letter)
-            time.sleep(0.03)
+            time.sleep(0.1)
         driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ENTER)
-        time.sleep(2)
+        time.sleep(3)
 
     # 6번 입력 후, 구독(subscribe) 팝업 닫기 (있을 경우)
     try:
         subscribe_close_icon = driver.find_element(By.CSS_SELECTOR, 'svg[data-testid=\"icon-close\"]')
         subscribe_close_icon.click()
         print("[INFO] 구독 창 닫기 완료")
-        time.sleep(1)
+        time.sleep(2.5)
     except Exception as e:
         print(f"[INFO] 구독 창 없음 또는 무시")# : {e}")
 
