@@ -429,7 +429,6 @@ async def share(interaction: discord.Interaction) :
 
     embed = discord.Embed(title=f"Wordle {today}", color=0x00ff00)
     # add profile
-    embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url)
     avatar_url = interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url
 
     embed.set_thumbnail(url=avatar_url)
@@ -511,17 +510,29 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
         color=discord.Color.green()
     )
     # add profile
-    embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url)
     avatar_url = interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url
 
-    embed.set_thumbnail(url=avatar_url)
+    embed.set_author(name=interaction.user.display_name, icon_url=avatar_url)
     avg_perf = calculate_mean(user_data[key])
     name = messages["player_stats"]
     value = messages["stats"].format(played=str(data['games_played']), wins = str(data['wins']), streak = str(data['current_streak']), max_streak=str(data['max_streak']), wr = str(round(data['wins'] / data['games_played'] * 100, 2)), avg = str(round(avg_perf, 2)))
     embed.add_field(name=name, value=value, inline=False)
     hist_out = render_histogram(user_data[key])
     values = get_values(user_data[key])
-    hist_value = ":one: | " + ":green_square:" * hist_out[0] + " ("+ values[0] + ")\n" +":two: | " + ":green_square:" * hist_out[1] + " ("+ values[1] + ")\n"":three: | " + ":green_square:" * hist_out[2] + " ("+ values[2] + ")\n"":four: | " + ":green_square:" * hist_out[3] + " ("+ values[3] + ")\n"":five: | " + ":green_square:" * hist_out[4] + " ("+ values[4] + ")\n"":six: | " + ":green_square:" * hist_out[5] + " ("+ values[5] + ")\n"
+
+    # count failures
+    failures = data["games_played"] - sum(int(v) for v in values)
+
+    # print hist
+    hist_value = (
+        ":one:   | " + ":green_square:" * hist_out[0] + f" ({values[0]})\n" +
+        ":two:   | " + ":green_square:" * hist_out[1] + f" ({values[1]})\n" +
+        ":three: | " + ":green_square:" * hist_out[2] + f" ({values[2]})\n" +
+        ":four:  | " + ":green_square:" * hist_out[3] + f" ({values[3]})\n" +
+        ":five:  | " + ":green_square:" * hist_out[4] + f" ({values[4]})\n" +
+        ":six:   | " + ":green_square:" * hist_out[5] + f" ({values[5]})\n" +
+        ":regional_indicator_x:     | " + ":yellow_square:" * max(int((failures / max(data["games_played"], 1)) * 8), 1) + f" ({failures})\n"
+    )
     embed.add_field(name=":bar_chart: Histograms", value=hist_value, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=eph)
     return
@@ -545,7 +556,7 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
         color=discord.Color.gold()
     )
 
-    # Guild 이름 + 아이콘
+    # Guild name +icon
     if interaction.guild.icon:
         embed.set_author(
             name=messages["leaderboard_guild_name"].format(name=interaction.guild.name),
@@ -554,7 +565,6 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
     else:
         embed.set_author(name=interaction.guild.name)
 
-    # 1. 헤더 및 데이터 라인 합치기
     leaderboard_text = "🏅 Rank | Name           |   W |  CS |  WR  | AVG\n"
     leaderboard_text += "--------------------------------------------------\n"
 
@@ -569,7 +579,6 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
 
         leaderboard_text += f"{idx:>9} | {name:<14} | {wins:>3} | {cs:>3} | {wr:>4.1f}% | {avg:>4.2f}\n"
 
-    # 2. 하나의 큰 코드 블록에 담기
     embed.description = f"```{leaderboard_text}```"
 
     eph = not share
