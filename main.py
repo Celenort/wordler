@@ -550,9 +550,19 @@ async def leaderboard(interaction: discord.Interaction, share : bool = False):
 async def on_ready():
     global TODAYS_WORD
     print(f"Logged in as {client.user}")
+    await client.change_presence(
+            status=discord.Status.dnd,
+            activity=discord.Game(name="Loading wordle...")
+        )
+
     load_valid_words()
     TODAYS_WORD = fetch_todays_word()
     load_user_data()
+    await client.change_presence(
+        status=discord.Status.online,
+        activity=discord.Game(name="/start")
+    )
+
     asyncio.create_task(start_daily_reset_task())
     await tree.sync()
 
