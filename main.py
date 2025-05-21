@@ -570,7 +570,7 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
         embed.set_author(name=interaction.guild.name)
 
     leaderboard_text = (
-        "🏅 Rk | 👤 Username     | 🏆 W | 🔥 CS | 📈 WR  | 📌 AVG\n"
+        "🏅 | 👤 Username    |🏆 W | 🔥CS | 📈 WR | 📌 AVG\n"
         "--------------------------------------------------------\n"
     )
 
