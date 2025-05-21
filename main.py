@@ -529,12 +529,12 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
 
     # print hist
     hist_value = (
-        ":one:   | " + ":green_square:" * hist_out[0] + f" ({values[0]})\n" +
-        ":two:   | " + ":green_square:" * hist_out[1] + f" ({values[1]})\n" +
+        ":one: | " + ":green_square:" * hist_out[0] + f" ({values[0]})\n" +
+        ":two: | " + ":green_square:" * hist_out[1] + f" ({values[1]})\n" +
         ":three: | " + ":green_square:" * hist_out[2] + f" ({values[2]})\n" +
-        ":four:  | " + ":green_square:" * hist_out[3] + f" ({values[3]})\n" +
-        ":five:  | " + ":green_square:" * hist_out[4] + f" ({values[4]})\n" +
-        ":six:   | " + ":green_square:" * hist_out[5] + f" ({values[5]})\n" +
+        ":four: | " + ":green_square:" * hist_out[3] + f" ({values[3]})\n" +
+        ":five: | " + ":green_square:" * hist_out[4] + f" ({values[4]})\n" +
+        ":six: | " + ":green_square:" * hist_out[5] + f" ({values[5]})\n" +
         ":regional_indicator_x:     | " + ":yellow_square:" * max(int((failures / max(data["games_played"], 1)) * 8), 0) + f" ({failures})\n"
     )
     embed.add_field(name=":bar_chart: Histograms", value=hist_value, inline=False)
@@ -571,7 +571,7 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
 
     leaderboard_text = (
         "🏅 | 👤 Username    |🏆 W | 🔥CS | 📈 WR | 📌 AVG\n"
-        "--------------------------------------------------------\n"
+        "-----------------------------------------------------\n"
     )
 
     for idx, (uid, data, avg_perf) in enumerate(guild_users[:10], start=1):
