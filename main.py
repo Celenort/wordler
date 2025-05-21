@@ -58,9 +58,9 @@ def render_histogram(data: dict):
         output.append(bar_count)
     
     return output
-def get_values(data: dict) :
+def get_values(data: dict):
     keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
-    values = [str(data.get(k, 0) for k in keys)]
+    values = [str(data.get(k, 0)) for k in keys]  # ✅ 괄호 위치 수정
     return values
 
 def calculate_mean(data: dict):
@@ -526,7 +526,6 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
     await interaction.response.send_message(embed=embed, ephemeral=eph)
     return
 
-
 @tree.command(name="leaderboard", description=messages["desc_leaderboard"])
 async def leaderboard(interaction: discord.Interaction, share: bool = False):
     guild_users = [
@@ -543,10 +542,10 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
 
     embed = discord.Embed(
         title=messages["leaderboard_title"],
-        description="```🏅   W | 🔥 CS | 📈 WR   | 📌 AVG```",
         color=discord.Color.gold()
     )
 
+    # Guild 이름 + 아이콘
     if interaction.guild.icon:
         embed.set_author(
             name=messages["leaderboard_guild_name"].format(name=interaction.guild.name),
@@ -555,35 +554,27 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
     else:
         embed.set_author(name=interaction.guild.name)
 
+    # 1. 헤더 및 데이터 라인 합치기
+    leaderboard_text = "🏅 Rank | Name           |   W |  CS |  WR  | AVG\n"
+    leaderboard_text += "--------------------------------------------------\n"
+
     for idx, (uid, data, avg_perf) in enumerate(guild_users[:10], start=1):
         member = interaction.guild.get_member(uid)
         name = member.display_name if member else "Unknown"
-        avatar_url = member.avatar.url if member and member.avatar else member.default_avatar.url if member else None
-
+        name = name[:14]  # 길이 제한
         wins = data["wins"]
         cs = data["current_streak"]
-        wr = round(wins / data["games_played"] * 100, 2)
+        wr = round(wins / data["games_played"] * 100, 1)
         avg = round(avg_perf, 2)
 
-        # 고정 폭 정렬: 각 항목은 4, 4, 6, 5자
-        stat_line = f"```{wins:>4} | {cs:>4} | {wr:>5.1f}% | {avg:>5.2f}```"
+        leaderboard_text += f"{idx:>9} | {name:<14} | {wins:>3} | {cs:>3} | {wr:>4.1f}% | {avg:>4.2f}\n"
 
-        value = f"{stat_line}"
-        if avatar_url:
-            embed.add_field(
-                name=f"#{idx} {name}",
-                value=f"![avatar]({avatar_url})\n{value}",
-                inline=False
-            )
-        else:
-            embed.add_field(
-                name=f"#{idx} {name}",
-                value=value,
-                inline=False
-            )
+    # 2. 하나의 큰 코드 블록에 담기
+    embed.description = f"```{leaderboard_text}```"
 
     eph = not share
     await interaction.response.send_message(embed=embed, ephemeral=eph)
+
 
 
 
