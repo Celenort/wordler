@@ -535,7 +535,7 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
         ":four: | " + ":green_square:" * hist_out[3] + f" ({values[3]})\n" +
         ":five: | " + ":green_square:" * hist_out[4] + f" ({values[4]})\n" +
         ":six: | " + ":green_square:" * hist_out[5] + f" ({values[5]})\n" +
-        ":regional_indicator_x:     | " + ":yellow_square:" * max(int((failures / max(data["games_played"], 1)) * 8), 0) + f" ({failures})\n"
+        ":regional_indicator_x: | " + ":yellow_square:" * max(int((failures / max(data["games_played"], 1)) * 8), 0) + f" ({failures})\n"
     )
     embed.add_field(name=":bar_chart: Histograms", value=hist_value, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=eph)
