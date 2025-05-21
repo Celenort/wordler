@@ -60,7 +60,7 @@ def render_histogram(data: dict):
     return output
 def get_values(data: dict) :
     keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
-    values = [data.get(k, 0) for k in keys]
+    values = [str(data.get(k, 0) for k in keys)]
     return values
 
 def calculate_mean(data: dict):
@@ -220,7 +220,10 @@ async def start_daily_reset_task():
     while True:
         global sessions
         print("[INFO] KST 00:00. refresh answer")
-
+        await client.change_presence(
+            status=discord.Status.idle,
+            activity=discord.Game(name=messages["idle"])
+        )
         # calculate yesterday's date
         yesterday = (datetime.now(kst) - timedelta(days=1)).date()
 
@@ -235,13 +238,22 @@ async def start_daily_reset_task():
         save_user_data()
 
         temp = TODAYS_WORD
-        TODAYS_WORD = fetch_todays_word()
+        TODAYS_WORD = await asyncio.to_thread(fetch_todays_word)
+
+
+
+
+
         sessions = {} # reset sessions
         fetchcount = 0
         if temp == TODAYS_WORD :
             await asyncio.sleep(10)
             TODAYS_WORD = fetch_todays_word()
             fetchcount +=1
+        await client.change_presence(
+            status=discord.Status.online,
+            activity=discord.Game(name=messages["online"])
+        )
         await asyncio.sleep(86400-30*fetchcount)
         fetchcount=0
 
@@ -416,6 +428,11 @@ async def share(interaction: discord.Interaction) :
         board_text += empty_row + "\n"
 
     embed = discord.Embed(title=f"Wordle {today}", color=0x00ff00)
+    # add profile
+    embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url)
+    avatar_url = interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url
+
+    embed.set_thumbnail(url=avatar_url)
     embed.add_field(name=f"{name} : {length}/6", value=board_text, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
@@ -493,6 +510,11 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
         title=messages["stats_title"].format(name=interaction.user.display_name),
         color=discord.Color.green()
     )
+    # add profile
+    embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url)
+    avatar_url = interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url
+
+    embed.set_thumbnail(url=avatar_url)
     avg_perf = calculate_mean(user_data[key])
     name = messages["player_stats"]
     value = messages["stats"].format(played=str(data['games_played']), wins = str(data['wins']), streak = str(data['current_streak']), max_streak=str(data['max_streak']), wr = str(round(data['wins'] / data['games_played'] * 100, 2)), avg = str(round(avg_perf, 2)))
@@ -506,42 +528,62 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
 
 
 @tree.command(name="leaderboard", description=messages["desc_leaderboard"])
-async def leaderboard(interaction: discord.Interaction, share : bool = False):
-    # pre-compute average
+async def leaderboard(interaction: discord.Interaction, share: bool = False):
     guild_users = [
         (uid, data, calculate_mean(data))
         for (gid, uid), data in user_data.items()
-        if gid == interaction.guild_id
+        if gid == interaction.guild_id and data["games_played"] > 0
     ]
 
     if not guild_users:
         await interaction.response.send_message(messages["no_leaderboard_data"], ephemeral=True)
         return
 
-    # sort
     guild_users.sort(key=lambda x: (-x[1]["wins"], x[2]))
 
     embed = discord.Embed(
         title=messages["leaderboard_title"],
-        description=messages["leaderboard_guild_name"].format(name=interaction.guild.name),
+        description="```🏅   W | 🔥 CS | 📈 WR   | 📌 AVG```",
         color=discord.Color.gold()
     )
 
+    if interaction.guild.icon:
+        embed.set_author(
+            name=messages["leaderboard_guild_name"].format(name=interaction.guild.name),
+            icon_url=interaction.guild.icon.url
+        )
+    else:
+        embed.set_author(name=interaction.guild.name)
+
     for idx, (uid, data, avg_perf) in enumerate(guild_users[:10], start=1):
-        if data['games_played'] == 0:
-            continue
         member = interaction.guild.get_member(uid)
         name = member.display_name if member else "Unknown"
-        value = f"🏅 W : {data['wins']} | 🔥 CS : {data['current_streak']} | :chart_with_upwards_trend: WR : {round(data['wins']/data['games_played'] * 100, 2)} % | :pushpin: AVG : {round(avg_perf, 2)}"
-        embed.add_field(
-            name=f"#{idx} {name}",
-            value=value,
-            inline=False
-        )
+        avatar_url = member.avatar.url if member and member.avatar else member.default_avatar.url if member else None
+
+        wins = data["wins"]
+        cs = data["current_streak"]
+        wr = round(wins / data["games_played"] * 100, 2)
+        avg = round(avg_perf, 2)
+
+        # 고정 폭 정렬: 각 항목은 4, 4, 6, 5자
+        stat_line = f"```{wins:>4} | {cs:>4} | {wr:>5.1f}% | {avg:>5.2f}```"
+
+        value = f"{stat_line}"
+        if avatar_url:
+            embed.add_field(
+                name=f"#{idx} {name}",
+                value=f"![avatar]({avatar_url})\n{value}",
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name=f"#{idx} {name}",
+                value=value,
+                inline=False
+            )
 
     eph = not share
     await interaction.response.send_message(embed=embed, ephemeral=eph)
-    return
 
 
 
@@ -552,15 +594,16 @@ async def on_ready():
     print(f"Logged in as {client.user}")
     await client.change_presence(
             status=discord.Status.dnd,
-            activity=discord.Game(name="Loading wordle...")
+            activity=discord.Game(name=messages["dnd"])
         )
 
     load_valid_words()
-    TODAYS_WORD = fetch_todays_word()
+    TODAYS_WORD = await asyncio.to_thread(fetch_todays_word)
     load_user_data()
+
     await client.change_presence(
         status=discord.Status.online,
-        activity=discord.Game(name="/start")
+        activity=discord.Game(name=messages["online"])
     )
 
     asyncio.create_task(start_daily_reset_task())

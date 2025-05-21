@@ -33,7 +33,9 @@
     "player_stats": "플레이어 통계",
     "desc_leaderboard": "서버 리더보드를 확인합니다.",
     "stats": ":video_game: 총 게임 수 : {played}\n:trophy: 승리 수 : {wins}\n:fire: 현재 연속 성공 일수 : {streak}\n:medal: 최대 연속 성공 일수 : {max_streak}\n:chart_with_upwards_trend: 승률 : {wr}%\n:pushpin: 승리시 평균점수 : {avg}",
-    "leaderboard_guild_name":"서버 : {name}"
-
+    "leaderboard_guild_name":"서버 : {name}",
+    "online": "/start 로 Wordle 플레이",
+    "idle": "오늘의 wordle 단어 불러오기",
+    "dnd": "Wordler 로딩"
   }
   
