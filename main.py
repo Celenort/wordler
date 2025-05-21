@@ -48,7 +48,6 @@ def render_histogram(data: dict):
     # 3. hist
     output = []
     for idx, val in enumerate(values):
-        # 비율 계산
         if max_val == 0:
             bar_count = 0
         else:
@@ -59,6 +58,10 @@ def render_histogram(data: dict):
         output.append(bar_count)
     
     return output
+def get_values(data: dict) :
+    keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
+    values = [data.get(k, 0) for k in keys]
+    return values
 
 def calculate_mean(data: dict):
     keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
@@ -89,22 +92,29 @@ def load_valid_words():
         print("Failed to load valid words.")
 
 def format_guess_feedback(guess, answer):
-    result = []
+    result = ['black'] * 5
     answer_chars = list(answer)
-    for idx, c in enumerate(guess):
-        if c == answer[idx]:
-            result.append('green')
-            answer_chars[idx] = None
-        else:
-            result.append(None)
-    for idx, c in enumerate(guess):
-        if result[idx] is None:
-            if c in answer_chars:
-                result[idx] = 'yellow'
-                answer_chars[answer_chars.index(c)] = None
-            else:
-                result[idx] = 'black'
+    guess_used = [False] * 5
+    answer_used = [False] * 5
+
+    # 1단계: green 처리
+    for i in range(5):
+        if guess[i] == answer[i]:
+            result[i] = 'green'
+            guess_used[i] = True
+            answer_used[i] = True
+
+    # 2단계: yellow 처리
+    for i in range(5):
+        if not guess_used[i]:
+            for j in range(5):
+                if not answer_used[j] and guess[i] == answer[j]:
+                    result[i] = 'yellow'
+                    answer_used[j] = True
+                    break
+
     return result
+
 
 def feedback_to_render(feedback, guess) :
     ret = ""
@@ -210,8 +220,23 @@ async def start_daily_reset_task():
     while True:
         global sessions
         print("[INFO] KST 00:00. refresh answer")
+
+        # calculate yesterday's date
+        yesterday = (datetime.now(kst) - timedelta(days=1)).date()
+
+        # CS to 0
+        for key, data in user_data.items():
+            last_play_date = data.get("last_play_date")
+            if not last_play_date or datetime.strptime(last_play_date, "%Y-%m-%d").date() != yesterday:
+                if data.get("current_streak", 0) > 0:
+                    print(f"[INFO] Resetting streak for user {key}")
+                    data["current_streak"] = 0
+
+        save_user_data()
+
         TODAYS_WORD = fetch_todays_word()
-        sessions = {} # reset sessions
+        sessions = {}
+
         await asyncio.sleep(86400)
 
 
@@ -467,7 +492,8 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
     value = messages["stats"].format(played=str(data['games_played']), wins = str(data['wins']), streak = str(data['current_streak']), max_streak=str(data['max_streak']), wr = str(round(data['wins'] / data['games_played'] * 100, 2)), avg = str(round(avg_perf, 2)))
     embed.add_field(name=name, value=value, inline=False)
     hist_out = render_histogram(user_data[key])
-    hist_value = ":one: | " + ":green_square:" * hist_out[0] + "\n" +":two: | " + ":green_square:" * hist_out[1] + "\n"":three: | " + ":green_square:" * hist_out[2] + "\n"":four: | " + ":green_square:" * hist_out[3] + "\n"":five: | " + ":green_square:" * hist_out[4] + "\n"":six: | " + ":green_square:" * hist_out[5] + "\n"
+    values = get_values(user_data[key])
+    hist_value = ":one: | " + ":green_square:" * hist_out[0] + " ("+ values[0] + ")\n" +":two: | " + ":green_square:" * hist_out[1] + " ("+ values[1] + ")\n"":three: | " + ":green_square:" * hist_out[2] + " ("+ values[2] + ")\n"":four: | " + ":green_square:" * hist_out[3] + " ("+ values[3] + ")\n"":five: | " + ":green_square:" * hist_out[4] + " ("+ values[4] + ")\n"":six: | " + ":green_square:" * hist_out[5] + " ("+ values[5] + ")\n"
     embed.add_field(name=":bar_chart: Histograms", value=hist_value, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=eph)
     return
