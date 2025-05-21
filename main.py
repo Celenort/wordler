@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from fetch import fetch_todays_word
 
 
+
 # ========== Global config ==========
 WORD_LIST_URL = "https://gist.githubusercontent.com/dracos/dd0668f281e685bad51479e5acaadb93/raw/"
 WORDLE_URL = "https://www.nytimes.com/games/wordle/index.html"
@@ -37,6 +38,9 @@ client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client, fallback_to_global=False)
 
 # ========== Utils ==========
+def truncate_name(name: str, limit: int = 14) -> str:
+    return name if len(name) <= limit else name[:limit - 1] + "…"
+
 def render_histogram(data: dict):
     # 1. n1~n6 
     keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
@@ -537,6 +541,7 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
     await interaction.response.send_message(embed=embed, ephemeral=eph)
     return
 
+
 @tree.command(name="leaderboard", description=messages["desc_leaderboard"])
 async def leaderboard(interaction: discord.Interaction, share: bool = False):
     guild_users = [
@@ -556,7 +561,6 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
         color=discord.Color.gold()
     )
 
-    # Guild name +icon
     if interaction.guild.icon:
         embed.set_author(
             name=messages["leaderboard_guild_name"].format(name=interaction.guild.name),
@@ -565,25 +569,27 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
     else:
         embed.set_author(name=interaction.guild.name)
 
-    leaderboard_text = "🏅 Rank | Name           |   W |  CS |  WR  | AVG\n"
-    leaderboard_text += "--------------------------------------------------\n"
+    leaderboard_text = (
+        "🏅 Rk | 👤 Username     | 🏆 W | 🔥 CS | 📈 WR  | 📌 AVG\n"
+        "--------------------------------------------------------\n"
+    )
 
     for idx, (uid, data, avg_perf) in enumerate(guild_users[:10], start=1):
         member = interaction.guild.get_member(uid)
-        name = member.display_name if member else "Unknown"
-        name = name[:14]  # 길이 제한
+        full_name = str(member) if member else "Unknown"
+        full_name = truncate_name(full_name, 14)
+
         wins = data["wins"]
         cs = data["current_streak"]
         wr = round(wins / data["games_played"] * 100, 1)
         avg = round(avg_perf, 2)
 
-        leaderboard_text += f"{idx:>9} | {name:<14} | {wins:>3} | {cs:>3} | {wr:>4.1f}% | {avg:>4.2f}\n"
+        leaderboard_text += f"{idx:>2} | {full_name:<14} | {wins:>3} | {cs:>4} | {wr:>5.1f}% | {avg:>6.2f}\n"
 
     embed.description = f"```{leaderboard_text}```"
 
     eph = not share
     await interaction.response.send_message(embed=embed, ephemeral=eph)
-
 
 
 
