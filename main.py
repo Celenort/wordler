@@ -7,8 +7,7 @@ import pytz
 import requests
 from datetime import datetime, timedelta
 from fetch import fetch_todays_word
-
-
+import sys
 
 # ========== Global config ==========
 WORD_LIST_URL = "https://gist.githubusercontent.com/dracos/dd0668f281e685bad51479e5acaadb93/raw/"
@@ -36,6 +35,20 @@ intents.message_content = True
 
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client, fallback_to_global=False)
+
+# ========== Check system version ==========
+
+USE_TO_THREAD = False
+
+if sys.version_info >= (3, 9):
+    USE_TO_THREAD=True
+
+async def to_thread_equivalent(func):
+    if USE_TO_THREAD :
+        return await asyncio.to_thread(func)
+    else :
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, func)
 
 # ========== Utils ==========
 def truncate_name(name: str, limit: int = 14) -> str:
@@ -242,7 +255,7 @@ async def start_daily_reset_task():
         save_user_data()
 
         temp = TODAYS_WORD
-        TODAYS_WORD = await asyncio.to_thread(fetch_todays_word)
+        TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
 
 
 
@@ -604,7 +617,7 @@ async def on_ready():
         )
 
     load_valid_words()
-    TODAYS_WORD = await asyncio.to_thread(fetch_todays_word)
+    TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
     load_user_data()
 
     await client.change_presence(

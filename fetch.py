@@ -52,8 +52,9 @@ def fetch_todays_word():
                 break
         print(f"[INFO] Play 버튼 클릭")
     except Exception as e:
-        print(f"[INFO] Play 버튼 무시 또는 없음: {e}")
 
+        first_line = str(e).split('\n', 1)[0]
+        print(f"[INFO] 초기 팝업이 없거나 무시함: {first_line}")
     # 광고 Skip 버튼 클릭 (있을 경우)
     try:
         all_buttons = driver.find_elements(By.TAG_NAME, "button")
@@ -65,7 +66,9 @@ def fetch_todays_word():
                 time.sleep(2.5)
                 break
     except Exception as e:
-        print(f"[INFO] 광고 Skip 버튼 없음 또는 무시: {e}")
+        first_line = str(e).split('\n', 1)[0]
+
+        print(f"[INFO] 광고 Skip 버튼 없음 또는 무시: {first_line}")
 
     # 튜토리얼 창 닫기 (있을 경우)
     try:
@@ -74,7 +77,8 @@ def fetch_todays_word():
         print("[INFO] 튜토리얼 창 닫기 완료")
         time.sleep(1)
     except Exception as e:
-        print(f"[INFO] 튜토리얼 창 없음 또는 무시: {e}")
+        first_line = str(e).split('\n', 1)[0]
+        print(f"[INFO] 튜토리얼 창 없음 또는 무시: {first_line}")
     
     wrong_word = "xviii"
     for _ in range(6):
