@@ -8,6 +8,7 @@ import requests
 from datetime import datetime, timedelta
 from fetch import fetch_todays_word
 import sys
+from hardmode import check_hard_mode_compliance, calculate_score
 
 # ========== Global config ==========
 WORD_LIST_URL = "https://gist.githubusercontent.com/dracos/dd0668f281e685bad51479e5acaadb93/raw/"
@@ -16,6 +17,7 @@ DATA_FOLDER = "wordle_data"
 KEYBOARD_LAYOUT = "qwertyuiopasdfghjklzxcvbnm"
 VALID_WORDS = set()
 TODAYS_WORD = ""
+DEBUG=True
 
 user_data = {}
 sessions = {}
@@ -199,7 +201,9 @@ def load_user_data():
                         "n3" : int(row["n3"]),
                         "n4" : int(row["n4"]),
                         "n5" : int(row["n5"]),
-                        "n6" : int(row["n6"])
+                        "n6" : int(row["n6"]),
+                        "score" : float(row["score"]),
+                        "hardmode_successes" : int(row["hardmode_successes"])
                     }
 
 def save_user_data():
@@ -213,7 +217,7 @@ def save_user_data():
             writer = csv.DictWriter(f, fieldnames=[
                 "user_id", "last_play_date", "current_streak", "max_streak", 
                 "games_played", "wins", "attempts", "board", "keyboard", "done_today",
-                "n1", "n2", "n3", "n4", "n5", "n6"
+                "n1", "n2", "n3", "n4", "n5", "n6", "score", "hardmode_successes"
             ])
             writer.writeheader()
             for user in users:
@@ -257,10 +261,6 @@ async def start_daily_reset_task():
         temp = TODAYS_WORD
         TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
 
-
-
-
-
         sessions = {} # reset sessions
         fetchcount = 0
         if temp == TODAYS_WORD :
@@ -293,13 +293,21 @@ async def start_game(interaction: discord.Interaction):
             "board": "",
             "keyboard": "",
             "done_today": False,
-            "n1": 0, "n2": 0, "n3": 0, "n4": 0, "n5": 0, "n6": 0
+            "n1": 0, "n2": 0, "n3": 0, "n4": 0, "n5": 0, "n6": 0,
+            "score": 0.0,
+            "hardmode_successes": 0
         }
 
     data = user_data[key]
 
     if data["last_play_date"] != today:
         # if new day, reset progress
+        data["attempts"] = 0
+        data["board"] = []
+        data["keyboard"] = {}
+        data["last_play_date"] = today
+        data["done_today"] = False
+    elif DEBUG :
         data["attempts"] = 0
         data["board"] = []
         data["keyboard"] = {}
@@ -315,7 +323,7 @@ async def start_game(interaction: discord.Interaction):
     }
 
     if sessions[key]["done"]:
-        await interaction.response.send_message(messages['already_solved'], ephemeral=True)
+        await interaction.response.send_message(messages['already_solved'], ephemeral=False if DEBUG else True)
         return
     
     board_text = ""
@@ -331,10 +339,10 @@ async def start_game(interaction: discord.Interaction):
     embed.add_field(name=messages["status"], value=board_text, inline=False)
     embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
     if board_text :
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else True)
         return
     else :
-        await interaction.response.send_message(messages["start_game"], ephemeral=True)
+        await interaction.response.send_message(messages["start_game"], ephemeral=False if DEBUG else True)
         return
 
 
@@ -345,19 +353,19 @@ async def guess_word(interaction: discord.Interaction, word: str):
     key = (interaction.guild_id, interaction.user.id)
 
     if key not in sessions:
-        await interaction.response.send_message(messages['not_started'], ephemeral=True)
+        await interaction.response.send_message(messages['not_started'], ephemeral=False if DEBUG else True)
         return
     elif sessions[key]["done"] or user_data[key]["done_today"]:
-        await interaction.response.send_message(messages['already_solved'], ephemeral=True)
+        await interaction.response.send_message(messages['already_solved'], ephemeral=False if DEBUG else True)
         return
 
 
     word = word.lower()
     if len(word) != 5:
-        await interaction.response.send_message(messages["invalid_word"], ephemeral=True)
+        await interaction.response.send_message(messages["invalid_word"], ephemeral=False if DEBUG else True)
         return
     elif word not in VALID_WORDS:
-        await interaction.response.send_message(messages["not_in_wordle_list"], ephemeral=True)
+        await interaction.response.send_message(messages["not_in_wordle_list"], ephemeral=False if DEBUG else True)
         return
 
     session = sessions[key]
@@ -390,30 +398,67 @@ async def guess_word(interaction: discord.Interaction, word: str):
     embed.add_field(name=messages["status"], value=board_text, inline=False)
     embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
 
+    # ==== Hard Mode checking logic
+    if "board" in session and session["board"]:
+        guesses = session.setdefault("raw_guesses", [])
+        guesses.append(word)  # applying newly inputed word
+        feedbacks = [format_guess_feedback(g, TODAYS_WORD) for g in guesses]
+        is_hard = check_hard_mode_compliance(guesses, feedbacks)
+        embed.add_field(name=messages["hard_mode_check"] + ":white_check_mark:" if is_hard else ":negative_squared_cross_mark:", value="", inline=False)
+
+
 
     if word == TODAYS_WORD:
+        # save guess information
+        session.setdefault("raw_guesses", []).append(word)
+        guesses = session["raw_guesses"]
+        feedbacks = [format_guess_feedback(g, TODAYS_WORD) for g in guesses]
+        
+        # Hard Mode determination
+        is_hard = check_hard_mode_compliance(guesses, feedbacks)
+        attempts_left = 6 - session["attempts"] + 1
+        score_gained, streak_mult, hard_mult = calculate_score(
+            attempts_left,
+            user_data[key]["current_streak"],
+            is_hard
+        )
+
+        # Applying score
+        user_data[key]["score"] += score_gained
+        if is_hard:
+            user_data[key]["hardmode_successes"] += 1
+
+
         user_data[key]["games_played"] += 1
         user_data[key]["wins"] += 1
         user_data[key]["current_streak"] += 1
         user_data[key]["max_streak"] = max(user_data[key]["max_streak"], user_data[key]["current_streak"])
-        user_data[key]["done_today"] = True
-        sessions[key]["done"] = True
+        user_data[key]["done_today"] = False if DEBUG else True
+        sessions[key]["done"] = False if DEBUG else True
         user_data[key]["n"+str(len(session["board"]))] += 1
         save_user_data()
         embed.add_field(name=messages['correct_guess1'],value=messages['correct_guess2'].format(word=TODAYS_WORD),  inline=False)
+        #embed.add_field(name=messages["hard_mode_check"] + ":white_check_mark:" if is_hard else ":negative_squared_cross_mark:", value="", inline=False)
+        embed.add_field(
+            name=messages["earned_points"],
+            value=messages["earned_desc"].format(attempts_left=attempts_left, streak_mult=streak_mult, hard_mult=hard_mult, score_gained=score_gained),
+            inline=False
+        )
+
     elif session["attempts"] >= 6:
         user_data[key]["games_played"] += 1
         user_data[key]["current_streak"] = 0
-        user_data[key]["done_today"] = True
-        sessions[key]["done"] = True
+        user_data[key]["done_today"] = False if DEBUG else True
+        sessions[key]["done"] = False if DEBUG else True
         save_user_data()
+        
         embed.add_field(name=messages['game_over'].format(word=TODAYS_WORD),value="",  inline=False)
     else:
         embed.add_field(name=':pushpin: ' + messages['remaining_attempts'].format(attempts=6 - session['attempts']),value="",  inline=False)
         user_data[key]["board"] = session["board"]
         user_data[key]["keyboard"] = session["keyboard"]
         save_user_data()
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else True)
     return
 
 @tree.command(name="share", description=messages["desc_share"])
@@ -423,7 +468,7 @@ async def share(interaction: discord.Interaction) :
     name = member.display_name if member else "Unknown"
     today = str(datetime.today().date())
     if user_data.get(key, {}).get("last_play_date") != today:
-        await interaction.response.send_message(messages['not_started'], ephemeral=True)
+        await interaction.response.send_message(messages['not_started'], ephemeral=False if DEBUG else True)
         return
     elif key not in sessions and user_data[key]["done_today"] :
         # done today -> so print
@@ -450,6 +495,12 @@ async def share(interaction: discord.Interaction) :
 
     embed.set_thumbnail(url=avatar_url)
     embed.add_field(name=f"{name} : {length}/6", value=board_text, inline=False)
+    # === Hard Mode check logic ===
+    guesses = session.get("raw_guesses", [])
+    if guesses:
+        feedbacks = [format_guess_feedback(g, TODAYS_WORD) for g in guesses]
+        is_hard= check_hard_mode_compliance(guesses, feedbacks)
+        embed.add_field(name=messages["hard_mode_check"] + ":white_check_mark:" if is_hard else ":negative_squared_cross_mark:", value="", inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
     return
@@ -459,7 +510,7 @@ async def show_current_progress(interaction: discord.Interaction):
     key = (interaction.guild_id, interaction.user.id)
     today = str(datetime.today().date())
     if user_data.get(key, {}).get("last_play_date") != today:
-        await interaction.response.send_message(messages['not_started'], ephemeral=True)
+        await interaction.response.send_message(messages['not_started'], ephemeral=False if DEBUG else True)
         return
     elif key not in sessions and user_data[key]["done_today"] :
         # done today -> so print
@@ -480,8 +531,9 @@ async def show_current_progress(interaction: discord.Interaction):
     embed = discord.Embed(title=messages["wordle"], color=0x00ff00)
     embed.add_field(name=messages["status"], value=board_text, inline=False)
     embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
+    
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else True)
 
 @tree.command(name="reset", description=messages["desc_reset"])
 @discord.app_commands.checks.has_permissions(administrator=True)
@@ -493,17 +545,17 @@ async def reset(interaction: discord.Interaction):
         os.remove(csvpath)
         user_data = {}
         sessions = {}
-        await interaction.response.send_message(messages["rmdir"], ephemeral=True)
+        await interaction.response.send_message(messages["rmdir"], ephemeral=False if DEBUG else True)
     except Exception as e:
-        await interaction.response.send_message(messages["rmdirfail"], ephemeral=True)
+        await interaction.response.send_message(messages["rmdirfail"], ephemeral=False if DEBUG else True)
 
 # raise error when not permitted
 @reset.error
 async def reset(interaction: discord.Interaction, e):
     if isinstance(e, discord.app_commands.errors.MissingPermissions):
-        await interaction.response.send_message(messages["rmdirnoperm"], ephemeral=True)
+        await interaction.response.send_message(messages["rmdirnoperm"], ephemeral=False if DEBUG else True)
     else:
-        await interaction.response.send_message(messages["rmdirfail"], ephemeral=True)
+        await interaction.response.send_message(messages["rmdirfail"], ephemeral=False if DEBUG else True)
 
 
 
@@ -516,10 +568,10 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
     eph = not share
 
     if not data:
-        await interaction.response.send_message(messages["no_play_record"], ephemeral=True)
+        await interaction.response.send_message(messages["no_play_record"], ephemeral=False if DEBUG else True)
         return
     elif data['games_played'] == 0 :
-        await interaction.response.send_message(messages["no_play_record"], ephemeral=True)
+        await interaction.response.send_message(messages["no_play_record"], ephemeral=False if DEBUG else True)
         return
 
     embed = discord.Embed(
@@ -532,7 +584,7 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
     embed.set_author(name=interaction.user.display_name, icon_url=avatar_url)
     avg_perf = calculate_mean(user_data[key])
     name = messages["player_stats"]
-    value = messages["stats"].format(played=str(data['games_played']), wins = str(data['wins']), streak = str(data['current_streak']), max_streak=str(data['max_streak']), wr = str(round(data['wins'] / data['games_played'] * 100, 2)), avg = str(round(avg_perf, 2)))
+    value = messages["stats"].format(played=str(data['games_played']), wins = str(data['wins']), hard= str(data['hardmode_successes']), streak = str(data['current_streak']), max_streak=str(data['max_streak']), wr = str(round(data['wins'] / data['games_played'] * 100, 2)), avg = str(round(avg_perf, 2)))
     embed.add_field(name=name, value=value, inline=False)
     hist_out = render_histogram(user_data[key])
     values = get_values(user_data[key])
@@ -551,7 +603,7 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
         ":regional_indicator_x: | " + ":yellow_square:" * max(int((failures / max(data["games_played"], 1)) * 8), 0) + f" ({failures})\n"
     )
     embed.add_field(name=":bar_chart: Histograms", value=hist_value, inline=False)
-    await interaction.response.send_message(embed=embed, ephemeral=eph)
+    await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
     return
 
 
@@ -564,7 +616,7 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
     ]
 
     if not guild_users:
-        await interaction.response.send_message(messages["no_leaderboard_data"], ephemeral=True)
+        await interaction.response.send_message(messages["no_leaderboard_data"], ephemeral=False if DEBUG else True)
         return
 
     guild_users.sort(key=lambda x: (-x[1]["wins"], x[2]))
@@ -583,26 +635,27 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
         embed.set_author(name=interaction.guild.name)
 
     leaderboard_text = (
-        "🏅 | 👤 Username    |🏆 W | 🔥CS | 📈 WR | 📌 AVG\n"
+        "🏅 | 👤 User   |🏆 W | 💪 HM | 📶CS | 📈 WR | 📌 AVG | 🪙 SCORE\n"
         "-----------------------------------------------------\n"
     )
 
     for idx, (uid, data, avg_perf) in enumerate(guild_users[:10], start=1):
         member = interaction.guild.get_member(uid)
         full_name = str(member) if member else "Unknown"
-        full_name = truncate_name(full_name, 14)
+        full_name = truncate_name(full_name, 9)
 
         wins = data["wins"]
         cs = data["current_streak"]
         wr = round(wins / data["games_played"] * 100, 1)
         avg = round(avg_perf, 2)
-
-        leaderboard_text += f"{idx:>2} | {full_name:<14} | {wins:>3} | {cs:>4} | {wr:>5.1f}% | {avg:>6.2f}\n"
+        score = data.get("score", 0)
+        hmode = data.get("hardmode_successes", 0)
+        leaderboard_text += f"{idx:>2} | {full_name:<9} | {wins:>3} | {hmode:>6} | {cs:>4} | {wr:>5.1f}% | {avg:>6.2f} | {score:>6}\n"
 
     embed.description = f"```{leaderboard_text}```"
 
     eph = not share
-    await interaction.response.send_message(embed=embed, ephemeral=eph)
+    await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
 
 
 
@@ -617,7 +670,12 @@ async def on_ready():
         )
 
     load_valid_words()
-    TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
+    if DEBUG :
+        TODAYS_WORD = "polar"
+    else :
+
+
+        TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
     load_user_data()
 
     await client.change_presence(
