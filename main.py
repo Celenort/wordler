@@ -624,8 +624,6 @@ async def show_stats(interaction: discord.Interaction, share : bool = False, har
     data = user_data.get(key)
     eph = not share
 
-    # TODO: Implement hard mode version, add more statistics
-
     if not data:
         await interaction.response.send_message(messages["no_play_record"], ephemeral=False if DEBUG else True)
         return
@@ -785,3 +783,14 @@ async def on_ready():
 
 # ========== run bot ==========
 client.run(os.environ.get("DISCORD_BOT_TOKEN"))
+
+
+## TODOS
+
+"""
+
+1. 새로운 워드 로딩 중일 때(자정, 초기 시작시) /w 나 /start 블락하기
+2. /stats 하드모드 개선
+3. async아닌 단순 함수들 다른 .py파일로 분리독립
+
+"""
