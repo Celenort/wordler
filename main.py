@@ -9,6 +9,10 @@ from datetime import datetime, timedelta
 from fetch import fetch_todays_word
 import sys
 from hardmode import check_hard_mode_compliance, calculate_score
+import json
+import re
+
+# invitation link : https://discord.com/oauth2/authorize?client_id=1365698732443570267
 
 # ========== Global config ==========
 WORD_LIST_URL = "https://gist.githubusercontent.com/dracos/dd0668f281e685bad51479e5acaadb93/raw/"
@@ -34,6 +38,7 @@ FIELDS = {
     "hardmode_successes": 0,
     "hardmode_streak": 0
 }
+DEBUG_WORD='quash'
 user_data = {}
 sessions = {}
 
@@ -92,6 +97,7 @@ def render_histogram(data: dict):
         output.append(bar_count)
     
     return output
+
 def get_values(data: dict):
     keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
     values = [str(data.get(k, 0)) for k in keys]  # ✅ 괄호 위치 수정
@@ -106,7 +112,6 @@ def calculate_mean(data: dict):
     for idx, value in enumerate(values) :
         rtn += (idx+1) * value     
     return rtn / sum(values)
-
 
 def lettercolor2emoji(letter, color):
     l = letter.upper()
@@ -149,7 +154,6 @@ def format_guess_feedback(guess, answer):
 
     return result
 
-
 def feedback_to_render(feedback, guess) :
     ret = ""
     for idx, let in enumerate(guess) :
@@ -167,8 +171,6 @@ def render_keyboard(status):
         else:
             lines[2] += lettercolor2emoji(c, color)
     return "\n".join(lines)
-import json
-import re
 
 def parse_board_colors(board):
     # 1. JSON chars to list
@@ -187,7 +189,6 @@ def parse_board_colors(board):
         results.append(colors)
 
     return results
-
 
 def ensure_data_folder():
     if not os.path.exists(DATA_FOLDER):
@@ -313,8 +314,6 @@ async def start_daily_reset_task():
         await asyncio.sleep(86400-30*fetchcount)
         fetchcount=0
 
-
-
 @tree.command(name="start", description=messages["desc_start"])
 async def start_game(interaction: discord.Interaction):
     key = (interaction.guild_id, interaction.user.id)
@@ -383,9 +382,6 @@ async def start_game(interaction: discord.Interaction):
     else :
         await interaction.response.send_message(messages["start_game"], ephemeral=False if DEBUG else True)
         return
-
-
-
 
 @tree.command(name="w", description=messages["desc_write"])
 async def guess_word(interaction: discord.Interaction, word: str):
@@ -533,7 +529,8 @@ async def share(interaction: discord.Interaction) :
     avatar_url = interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url
 
     embed.set_thumbnail(url=avatar_url)
-    embed.add_field(name=f"{name} : {length}/6", value=board_text, inline=False)
+    plus = " " if user_data[key]["done_today"] else " (playing)" 
+    embed.add_field(name=f"{name} : {length}/6" + plus, value=board_text, inline=False)
     # === Hard Mode check logic ===
     guesses = session.get("raw_guesses", [])
     if guesses:
@@ -596,10 +593,6 @@ async def reset(interaction: discord.Interaction, e):
     else:
         await interaction.response.send_message(messages["rmdirfail"], ephemeral=False if DEBUG else True)
 
-
-
-
-
 @tree.command(name="stats", description=messages["desc_stats"])
 async def show_stats(interaction: discord.Interaction, share : bool = False):
     key = (interaction.guild_id, interaction.user.id)
@@ -644,7 +637,6 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
     embed.add_field(name=":bar_chart: Histograms", value=hist_value, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
     return
-
 
 @tree.command(name="leaderboard", description=messages["desc_leaderboard"])
 async def leaderboard(interaction: discord.Interaction, share: bool = False):
@@ -698,6 +690,40 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
     await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
 
 
+# ========== Aliases ===========
+
+# tree.add_command(start_game, name="시작")
+# tree.add_command(start_game, name="워들")
+
+# tree.add_command(guess_word, name="추측")
+# tree.add_command(guess_word, name="단어")
+
+# tree.add_command(share, name="공유")
+
+# tree.add_command(show_current_progress, name="상태")
+# tree.add_command(reset, name="초기화")
+
+# tree.add_command(show_stats, name="통계")
+# tree.add_command(show_stats, name="profile")
+# tree.add_command(show_stats, name="스텟")
+
+# tree.add_command(leaderboard, name="리더보드")
+# tree.add_command(leaderboard, name="lb")
+
+alias_guess = discord.app_commands.Command(
+    name="guess",
+    description="Submit your Wordle guess (alias)",
+    callback=guess_word.callback
+)
+tree.add_command(alias_guess)
+
+alias_guess2 = discord.app_commands.Command(
+    name="추측",
+    description="Submit your Wordle guess (alias)",
+    callback=guess_word.callback
+)
+tree.add_command(alias_guess2)
+
 
 # ========== event ==========
 @client.event
@@ -711,10 +737,8 @@ async def on_ready():
 
     load_valid_words()
     if DEBUG :
-        TODAYS_WORD = "polar"
+        TODAYS_WORD = DEBUG_WORD
     else :
-
-
         TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
     load_user_data()
 
@@ -728,6 +752,3 @@ async def on_ready():
 
 # ========== run bot ==========
 client.run(os.environ.get("DISCORD_BOT_TOKEN"))
-
-
-# invitation link : https://discord.com/oauth2/authorize?client_id=1365698732443570267
