@@ -34,9 +34,11 @@ FIELDS = {
     "keyboard": {},
     "done_today": False,
     "n1": 0, "n2": 0, "n3": 0, "n4": 0, "n5": 0, "n6": 0,
+    "h1": 0, "h2": 0, "h3": 0, "h4": 0, "h5": 0, "h6": 0,
     "score": 0.0,
     "hardmode_successes": 0,
-    "hardmode_streak": 0
+    "hardmode_streak": 0,
+    "hardmode_games": 0
 }
 DEBUG_WORD='quash'
 user_data = {}
@@ -96,7 +98,7 @@ def render_histogram(data: dict):
         
         output.append(bar_count)
     
-    return output
+    return output, max_val
 
 def get_values(data: dict):
     keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
@@ -250,18 +252,27 @@ def load_user_data():
                             row["keyboard"] = json.dumps(row.get("keyboard", {}))
                             writer.writerow(row)
 
-def save_user_data():
+def save_user_data(key=None):
     ensure_data_folder()
-    guild_users = {}
-    for (guild_id, user_id), data in user_data.items():
-        guild_users.setdefault(guild_id, []).append({"user_id": user_id, **data})
+    
+    if key is None:
+        guild_users = {}
+        for (guild_id, user_id), data in user_data.items():
+            guild_users.setdefault(guild_id, []).append({"user_id": user_id, **data})
+    else:
+        if key not in user_data:
+            print(f"[WARN] save_user_data: {key} not found")
+            return
+        guild_users = {guild_id: []}
+        for (g_id, u_id), data in user_data.items():
+            if g_id == guild_id:
+                guild_users[guild_id].append({"user_id": u_id, **data})
 
     for guild_id, users in guild_users.items():
         with open(os.path.join(DATA_FOLDER, f"{guild_id}.csv"), "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=list(FIELDS.keys()))
             writer.writeheader()
             for user in users:
-                # board, keyboard- > Json parsing
                 row = user.copy()
                 row["board"] = json.dumps(user.get("board", []))
                 row["keyboard"] = json.dumps(user.get("keyboard", {}))
@@ -439,7 +450,7 @@ async def guess_word(interaction: discord.Interaction, word: str):
         guesses.append(word)  # applying newly inputed word
         feedbacks = [format_guess_feedback(g, TODAYS_WORD) for g in guesses]
         is_hard = check_hard_mode_compliance(guesses, feedbacks)
-        embed.add_field(name=messages["hard_mode_check"] + ":white_check_mark:" if is_hard else ":negative_squared_cross_mark:", value="", inline=False)
+        embed.add_field(name=messages["hard_mode_check"] + ":white_check_mark:" if is_hard else messages["hard_mode_check"] + ":negative_squared_cross_mark:", value="", inline=False)
 
 
 
@@ -451,10 +462,16 @@ async def guess_word(interaction: discord.Interaction, word: str):
         
         # Hard Mode determination
         is_hard = check_hard_mode_compliance(guesses, feedbacks)
+
+        if is_hard :
+            user_data[key]["hardmode_streak"] += 1
+        else :
+            user_data[key]["hardmode_streak"] = 0
         attempts_left = 6 - session["attempts"] + 1
         score_gained, streak_mult, hard_mult = calculate_score(
             attempts_left,
             user_data[key]["current_streak"],
+            user_data[key]["hardmode_streak"],
             is_hard
         )
 
@@ -471,9 +488,13 @@ async def guess_word(interaction: discord.Interaction, word: str):
         user_data[key]["done_today"] = False if DEBUG else True
         sessions[key]["done"] = False if DEBUG else True
         user_data[key]["n"+str(len(session["board"]))] += 1
-        save_user_data()
+        if is_hard :
+            user_data[key]["hardmode_games"] += 1
+            user_data[key]["h"+str(len(session["board"]))] += 1
+
+        save_user_data(key)
         embed.add_field(name=messages['correct_guess1'],value=messages['correct_guess2'].format(word=TODAYS_WORD),  inline=False)
-        #embed.add_field(name=messages["hard_mode_check"] + ":white_check_mark:" if is_hard else ":negative_squared_cross_mark:", value="", inline=False)
+        #embed.add_field(name=messages["hard_mode_check"] + ":white_check_mark:" if is_hard else messages["hard_mode_check"]  + ":negative_squared_cross_mark:", value="", inline=False)
         embed.add_field(
             name=messages["earned_points"],
             value=messages["earned_desc"].format(attempts_left=attempts_left, streak_mult=streak_mult, hard_mult=hard_mult, score_gained=score_gained),
@@ -483,16 +504,19 @@ async def guess_word(interaction: discord.Interaction, word: str):
     elif session["attempts"] >= 6:
         user_data[key]["games_played"] += 1
         user_data[key]["current_streak"] = 0
+        user_data[key]["hardmode_streak"] = 0
         user_data[key]["done_today"] = False if DEBUG else True
         sessions[key]["done"] = False if DEBUG else True
-        save_user_data()
-        
+        save_user_data(key)
+        if is_hard :
+            user_data[key]["hardmode_games"] += 1
+
         embed.add_field(name=messages['game_over'].format(word=TODAYS_WORD),value="",  inline=False)
     else:
         embed.add_field(name=':pushpin: ' + messages['remaining_attempts'].format(attempts=6 - session['attempts']),value="",  inline=False)
         user_data[key]["board"] = session["board"]
         user_data[key]["keyboard"] = session["keyboard"]
-        save_user_data()
+        save_user_data(key)
     await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else True)
     return
 
@@ -529,14 +553,14 @@ async def share(interaction: discord.Interaction) :
     avatar_url = interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url
 
     embed.set_thumbnail(url=avatar_url)
-    plus = " " if user_data[key]["done_today"] else " (playing)" 
+    plus = "" if user_data[key]["done_today"] else " (Playing)" 
     embed.add_field(name=f"{name} : {length}/6" + plus, value=board_text, inline=False)
     # === Hard Mode check logic ===
     guesses = session.get("raw_guesses", [])
     if guesses:
         feedbacks = [format_guess_feedback(g, TODAYS_WORD) for g in guesses]
         is_hard= check_hard_mode_compliance(guesses, feedbacks)
-        embed.add_field(name=messages["hard_mode_check"] + ":white_check_mark:" if is_hard else ":negative_squared_cross_mark:", value="", inline=False)
+        embed.add_field(name=messages["hard_mode_check"] + ":white_check_mark:" if is_hard else messages["hard_mode_check"] + ":negative_squared_cross_mark:", value="", inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
     return
@@ -563,9 +587,10 @@ async def show_current_progress(interaction: discord.Interaction):
         board_text += empty_row + "\n"
 
     keyboard_text = render_keyboard(session["keyboard"])
+    plus = " (Result)" if user_data[key]["done_today"] else " (Playing)" 
 
     embed = discord.Embed(title=messages["wordle"], color=0x00ff00)
-    embed.add_field(name=messages["status"], value=board_text, inline=False)
+    embed.add_field(name=messages["status"] + plus, value=board_text, inline=False)
     embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
     
 
@@ -618,12 +643,18 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
     name = messages["player_stats"]
     value = messages["stats"].format(played=str(data['games_played']), wins = str(data['wins']), hard= str(data['hardmode_successes']), streak = str(data['current_streak']), max_streak=str(data['max_streak']), wr = str(round(data['wins'] / data['games_played'] * 100, 2)), avg = str(round(avg_perf, 2)))
     embed.add_field(name=name, value=value, inline=False)
-    hist_out = render_histogram(user_data[key])
+    hist_out, max_val = render_histogram(user_data[key])
     values = get_values(user_data[key])
 
     # count failures
     failures = data["games_played"] - sum(int(v) for v in values)
 
+    fail_bar = None
+    if max_val == 0:
+        fail_bar = 0
+    else:
+        fail_bar = int((failures / max_val) * 8)
+        fail_bar = max(fail_bar, 1) if failures > 0 else 0  # display at least 1 (with nonzero)
     # print hist
     hist_value = (
         ":one: | " + ":green_square:" * hist_out[0] + f" ({values[0]})\n" +
@@ -632,7 +663,7 @@ async def show_stats(interaction: discord.Interaction, share : bool = False):
         ":four: | " + ":green_square:" * hist_out[3] + f" ({values[3]})\n" +
         ":five: | " + ":green_square:" * hist_out[4] + f" ({values[4]})\n" +
         ":six: | " + ":green_square:" * hist_out[5] + f" ({values[5]})\n" +
-        ":regional_indicator_x: | " + ":yellow_square:" * max(int((failures / max(data["games_played"], 1)) * 8), 0) + f" ({failures})\n"
+        ":regional_indicator_x: | " + ":yellow_square:" * fail_bar + f" ({failures})\n"
     )
     embed.add_field(name=":bar_chart: Histograms", value=hist_value, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
@@ -650,7 +681,7 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
         await interaction.response.send_message(messages["no_leaderboard_data"], ephemeral=False if DEBUG else True)
         return
 
-    guild_users.sort(key=lambda x: (-x[1]["wins"], x[2]))
+    guild_users.sort(key=lambda x: (-x[1]["score"], x[2]))
 
     embed = discord.Embed(
         title=messages["leaderboard_title"],
@@ -666,25 +697,25 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
         embed.set_author(name=interaction.guild.name)
 
     leaderboard_text = (
-        "🏅 | 👤 User   |🏆 W | 💪 HM | 📶CS | 📈 WR | 📌 AVG | 🪙 SCORE\n"
-        "-----------------------------------------------------\n"
+        "🏅 | 👤 User     | 🪙 SCORE | 💪 HMR | 📈 WR  | 📌 AVG\n"
+        "------------------------------------------------------\n"
     )
 
     for idx, (uid, data, avg_perf) in enumerate(guild_users[:10], start=1):
         member = interaction.guild.get_member(uid)
         full_name = str(member) if member else "Unknown"
-        full_name = truncate_name(full_name, 9)
+        full_name = truncate_name(full_name, 11)
 
         wins = data["wins"]
-        cs = data["current_streak"]
         wr = round(wins / data["games_played"] * 100, 1)
         avg = round(avg_perf, 2)
         score = data.get("score", 0)
         hmode = data.get("hardmode_successes", 0)
-        leaderboard_text += messages["leaderboard_rank"][idx-1]
-        leaderboard_text += f" | {full_name:<9} | {wins:>3} | {hmode:>6} | {cs:>4} | {wr:>5.1f}% | {avg:>6.2f} | {score:>6}\n"
+        hmr = round(hmode/wins * 100, 1)
+        leaderboard_text += messages["leaderboard_rank"][idx]
+        leaderboard_text += f" | {full_name:<11} | {score:>8.1f} | {hmr:>5.1f}% | {wr:>5.1f}% | {avg:>6.2f}\n"
 
-    embed.description = f"{leaderboard_text}"
+    embed.description = f"```{leaderboard_text}```"
 
     eph = not share
     await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)

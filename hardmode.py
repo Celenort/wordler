@@ -28,7 +28,8 @@ def check_hard_mode_compliance(guesses, feedbacks):
     return True
 
 
-def calculate_score(attempts_left, streak_count, is_hardmode):
+def calculate_score(attempts_left, streak_count, hardstreak_count, is_hardmode):
     streak_multiplier = min(1.0 + (streak_count / 10.0), 2.0)
-    hard_multiplier = 2.0 if is_hardmode else 1.0
+    hardstreak_multiplier = min(2.0 + (hardstreak_count / 10.0), 3.0)
+    hard_multiplier = hardstreak_multiplier if is_hardmode else 1.0
     return round(attempts_left * streak_multiplier * hard_multiplier, 1), streak_multiplier, hard_multiplier
