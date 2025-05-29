@@ -39,6 +39,7 @@
     "dnd": "Wordler 로딩",
     "hard_mode_check": "Hard Mode 만족 여부 : ",
     "earned_points": ":coin: 획득 점수",
-    "earned_desc": "기본점수: {attempts_left} × streak mult {streak_mult:.1f} × hard mult {hard_mult:.1f} = **{score_gained}점**"
+    "earned_desc": "기본점수: {attempts_left} × streak mult {streak_mult:.1f} × hard mult {hard_mult:.1f} = **{score_gained}점**",
+    "leaderboard_rank": [":first_place:", ":second_place:", ":third_place:", ":four:", ":five:", ":six:", ":seven:", ":eight:", ":nine:", ":keycap_ten:"]
   }
   

@@ -18,7 +18,22 @@ KEYBOARD_LAYOUT = "qwertyuiopasdfghjklzxcvbnm"
 VALID_WORDS = set()
 TODAYS_WORD = ""
 DEBUG=True
-
+FIELDS = {
+    "user_id": 0,
+    "last_play_date": "",
+    "current_streak": 0,
+    "max_streak": 0,
+    "games_played": 0,
+    "wins": 0,
+    "attempts": 0,
+    "board": [],
+    "keyboard": {},
+    "done_today": False,
+    "n1": 0, "n2": 0, "n3": 0, "n4": 0, "n5": 0, "n6": 0,
+    "score": 0.0,
+    "hardmode_successes": 0,
+    "hardmode_streak": 0
+}
 user_data = {}
 sessions = {}
 
@@ -183,28 +198,56 @@ def load_user_data():
     for filename in os.listdir(DATA_FOLDER):
         if filename.endswith(".csv"):
             guild_id = int(filename.replace(".csv", ""))
-            with open(os.path.join(DATA_FOLDER, filename), newline="", encoding="utf-8") as f:
+            fullpath = os.path.join(DATA_FOLDER, filename)
+
+            with open(fullpath, newline="", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames or []
+
+                updated = False
+                updated_rows = []
+
                 for row in reader:
-                    user_data[(guild_id, int(row["user_id"]))] = {
-                        "last_play_date": row["last_play_date"],
-                        "current_streak": int(row["current_streak"]),
-                        "max_streak": int(row["max_streak"]),
-                        "games_played": int(row["games_played"]),
-                        "wins": int(row["wins"]),
-                        "attempts": int(row.get("attempts", 0)),
-                        "board": json.loads(row["board"]) if row["board"] else [],
-                        "keyboard": json.loads(row["keyboard"]) if row["keyboard"] else {},
-                        "done_today": str(row["done_today"]).lower() in ("true", "1", "yes"), 
-                        "n1" : int(row["n1"]),
-                        "n2" : int(row["n2"]),
-                        "n3" : int(row["n3"]),
-                        "n4" : int(row["n4"]),
-                        "n5" : int(row["n5"]),
-                        "n6" : int(row["n6"]),
-                        "score" : float(row["score"]),
-                        "hardmode_successes" : int(row["hardmode_successes"])
-                    }
+                    user_id = int(row["user_id"])
+                    new_row = {}
+
+                    for key, default in FIELDS.items():
+                        if key not in row or row[key] == "":
+                            updated = True
+                            value = default
+                        else:
+                            value = row[key]
+
+                        if key == "done_today" :
+                            new_row[key] = value
+
+                        # Parse string -> correct type
+                        elif isinstance(default, int):
+                            new_row[key] = int(value)
+                        elif isinstance(default, float):
+                            new_row[key] = float(value)
+                        elif isinstance(default, list):
+                            new_row[key] = json.loads(value) if value else []
+                        elif isinstance(default, dict):
+                            new_row[key] = json.loads(value) if value else {}
+                        elif isinstance(default, bool):
+                            new_row[key] = str(value).lower() in ("true", "1", "yes")
+                        else:
+                            new_row[key] = value
+
+                    user_data[(guild_id, user_id)] = new_row
+                    updated_rows.append(new_row)
+
+                # case when updated
+                if updated:
+                    with open(fullpath, "w", newline="", encoding="utf-8") as wf:
+                        writer = csv.DictWriter(wf, fieldnames=list(FIELDS.keys()))
+                        writer.writeheader()
+                        for row in updated_rows:
+                            row = row.copy()
+                            row["board"] = json.dumps(row.get("board", []))
+                            row["keyboard"] = json.dumps(row.get("keyboard", {}))
+                            writer.writerow(row)
 
 def save_user_data():
     ensure_data_folder()
@@ -214,11 +257,7 @@ def save_user_data():
 
     for guild_id, users in guild_users.items():
         with open(os.path.join(DATA_FOLDER, f"{guild_id}.csv"), "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=[
-                "user_id", "last_play_date", "current_streak", "max_streak", 
-                "games_played", "wins", "attempts", "board", "keyboard", "done_today",
-                "n1", "n2", "n3", "n4", "n5", "n6", "score", "hardmode_successes"
-            ])
+            writer = csv.DictWriter(f, fieldnames=list(FIELDS.keys()))
             writer.writeheader()
             for user in users:
                 # board, keyboard- > Json parsing
@@ -650,9 +689,10 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
         avg = round(avg_perf, 2)
         score = data.get("score", 0)
         hmode = data.get("hardmode_successes", 0)
-        leaderboard_text += f"{idx:>2} | {full_name:<9} | {wins:>3} | {hmode:>6} | {cs:>4} | {wr:>5.1f}% | {avg:>6.2f} | {score:>6}\n"
+        leaderboard_text += messages["leaderboard_rank"][idx-1]
+        leaderboard_text += f" | {full_name:<9} | {wins:>3} | {hmode:>6} | {cs:>4} | {wr:>5.1f}% | {avg:>6.2f} | {score:>6}\n"
 
-    embed.description = f"```{leaderboard_text}```"
+    embed.description = f"{leaderboard_text}"
 
     eph = not share
     await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
