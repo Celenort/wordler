@@ -619,10 +619,12 @@ async def reset(interaction: discord.Interaction, e):
         await interaction.response.send_message(messages["rmdirfail"], ephemeral=False if DEBUG else True)
 
 @tree.command(name="stats", description=messages["desc_stats"])
-async def show_stats(interaction: discord.Interaction, share : bool = False):
+async def show_stats(interaction: discord.Interaction, share : bool = False, hard : bool = False):
     key = (interaction.guild_id, interaction.user.id)
     data = user_data.get(key)
     eph = not share
+
+    # TODO: Implement hard mode version, add more statistics
 
     if not data:
         await interaction.response.send_message(messages["no_play_record"], ephemeral=False if DEBUG else True)
