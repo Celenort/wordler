@@ -30,7 +30,6 @@ def get_values(data: dict):
     values = [str(data.get(k, 0)) for k in keys]  # ✅ 괄호 위치 수정
     return values
 
-
 def calculate_mean(data: dict):
     keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
     values = [data.get(k, 0) for k in keys]
@@ -40,7 +39,6 @@ def calculate_mean(data: dict):
     for idx, value in enumerate(values) :
         rtn += (idx+1) * value     
     return rtn / sum(values)
-
 
 def lettercolor2emoji(letter, color, emojis):
     l = letter.upper()
@@ -92,7 +90,6 @@ def render_keyboard(status, emojis):
         else:
             lines[2] += lettercolor2emoji(c, color, emojis)
     return "\n".join(lines)
-
 
 def parse_board_colors(board):
     # 1. JSON chars to list
