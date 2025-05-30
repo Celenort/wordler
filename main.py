@@ -10,7 +10,7 @@ from fetch import fetch_todays_word
 import sys
 from hardmode import check_hard_mode_compliance, calculate_score
 import json
-import re
+from utils import *
 
 # invitation link : https://discord.com/oauth2/authorize?client_id=1365698732443570267
 
@@ -18,7 +18,6 @@ import re
 WORD_LIST_URL = "https://gist.githubusercontent.com/dracos/dd0668f281e685bad51479e5acaadb93/raw/"
 WORDLE_URL = "https://www.nytimes.com/games/wordle/index.html"
 DATA_FOLDER = "wordle_data"
-KEYBOARD_LAYOUT = "qwertyuiopasdfghjklzxcvbnm"
 VALID_WORDS = set()
 TODAYS_WORD = ""
 DEBUG=True
@@ -47,6 +46,7 @@ sessions = {}
 # ========== Load json ==========
 with open('messages.json', 'r', encoding='utf-8') as f:
     messages = json.load(f)
+
 with open('emoji.json', 'r', encoding='utf-8') as f:
     emojis = json.load(f)
 
@@ -75,54 +75,6 @@ async def to_thread_equivalent(func):
         return await loop.run_in_executor(None, func)
 
 # ========== Utils ==========
-def truncate_name(name: str, limit: int = 14) -> str:
-    return name if len(name) <= limit else name[:limit - 1] + "…"
-
-def render_histogram(data: dict):
-    # 1. n1~n6 
-    keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
-    values = [data.get(k, 0) for k in keys]
-    
-    # 2. find max
-    max_val = max(values) if values else 1
-
-    # 3. hist
-    output = []
-    for idx, val in enumerate(values):
-        if max_val == 0:
-            bar_count = 0
-        else:
-            bar_count = int((val / max_val) * 8)
-
-        bar_count = max(bar_count, 1) if val > 0 else 0  # display at least 1 (with nonzero)
-        
-        output.append(bar_count)
-    
-    return output, max_val
-
-def get_values(data: dict):
-    keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
-    values = [str(data.get(k, 0)) for k in keys]  # ✅ 괄호 위치 수정
-    return values
-
-def calculate_mean(data: dict):
-    keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
-    values = [data.get(k, 0) for k in keys]
-    if sum(values) == 0 :
-        return 0
-    rtn = 0.0
-    for idx, value in enumerate(values) :
-        rtn += (idx+1) * value     
-    return rtn / sum(values)
-
-def lettercolor2emoji(letter, color):
-    l = letter.upper()
-    c = {'green': 'g', 'black': 'b', 'yellow': 'y', 'white': 'w'}.get(color)
-    cl = c.upper()
-    if not c:
-        print("color not supported")
-        return ''
-    return f'<:{l}{cl}:{emojis[l+c]}>'
 
 def load_valid_words():
     global VALID_WORDS
@@ -131,66 +83,6 @@ def load_valid_words():
         VALID_WORDS = set(response.text.strip().split("\n"))
     else:
         print("Failed to load valid words.")
-
-def format_guess_feedback(guess, answer):
-    result = ['black'] * 5
-    answer_chars = list(answer)
-    guess_used = [False] * 5
-    answer_used = [False] * 5
-
-    # 1단계: green 처리
-    for i in range(5):
-        if guess[i] == answer[i]:
-            result[i] = 'green'
-            guess_used[i] = True
-            answer_used[i] = True
-
-    # 2단계: yellow 처리
-    for i in range(5):
-        if not guess_used[i]:
-            for j in range(5):
-                if not answer_used[j] and guess[i] == answer[j]:
-                    result[i] = 'yellow'
-                    answer_used[j] = True
-                    break
-
-    return result
-
-def feedback_to_render(feedback, guess) :
-    ret = ""
-    for idx, let in enumerate(guess) :
-        ret += lettercolor2emoji(let, feedback[idx])
-    return ret
-
-def render_keyboard(status):
-    lines = ["", " ", "  "]
-    for c in KEYBOARD_LAYOUT:
-        color = status.get(c, 'white')
-        if c in "qwertyuiop":
-            lines[0] += lettercolor2emoji(c, color)
-        elif c in "asdfghjkl":
-            lines[1] += lettercolor2emoji(c, color)
-        else:
-            lines[2] += lettercolor2emoji(c, color)
-    return "\n".join(lines)
-
-def parse_board_colors(board):
-    # 1. JSON chars to list
- 
-    results = []
-
-    # 2. enumerating each row
-    for line in board:
-        colors = []
-        # 3. <:XXX:1234> find patterns like this
-        matches = re.findall(r'<:(.*?):\d+>', line)
-        for match in matches:
-            # 4. get last letter like XXX
-            if match:
-                colors.append(match[-1])
-        results.append(colors)
-
-    return results
 
 def ensure_data_folder():
     if not os.path.exists(DATA_FOLDER):
@@ -383,7 +275,7 @@ async def start_game(interaction: discord.Interaction):
     for _ in range(6 - len(sessions[key]["board"])):
         board_text += empty_row + "\n"
 
-    keyboard_text = render_keyboard(sessions[key]["keyboard"])
+    keyboard_text = render_keyboard(sessions[key]["keyboard"], emojis)
     embed = discord.Embed(title=messages["wordle"], color=0x00ff00)
     embed.add_field(name=messages["status"], value=board_text, inline=False)
     embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
@@ -416,7 +308,7 @@ async def guess_word(interaction: discord.Interaction, word: str):
 
     session = sessions[key]
     feedback = format_guess_feedback(word, TODAYS_WORD)
-    renderboard = feedback_to_render(feedback, word)
+    renderboard = feedback_to_render(feedback, word, emojis)
     session["board"].append(renderboard)
     session["attempts"] += 1
 
@@ -437,7 +329,7 @@ async def guess_word(interaction: discord.Interaction, word: str):
     for _ in range(6 - len(session["board"])):
         board_text += empty_row + "\n"
 
-    keyboard_text = render_keyboard(session["keyboard"])
+    keyboard_text = render_keyboard(session["keyboard"], emojis)
 
     # concat with a single embed
     embed = discord.Embed(title=messages["wordle"], color=0x00ff00)
@@ -586,7 +478,7 @@ async def show_current_progress(interaction: discord.Interaction):
     for _ in range(6 - len(session["board"])):
         board_text += empty_row + "\n"
 
-    keyboard_text = render_keyboard(session["keyboard"])
+    keyboard_text = render_keyboard(session["keyboard"], emojis)
     plus = " (Result)" if user_data[key]["done_today"] else " (Playing)" 
 
     embed = discord.Embed(title=messages["wordle"], color=0x00ff00)
@@ -720,42 +612,6 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
     eph = not share
     await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
 
-
-# ========== Aliases ===========
-
-# tree.add_command(start_game, name="시작")
-# tree.add_command(start_game, name="워들")
-
-# tree.add_command(guess_word, name="추측")
-# tree.add_command(guess_word, name="단어")
-
-# tree.add_command(share, name="공유")
-
-# tree.add_command(show_current_progress, name="상태")
-# tree.add_command(reset, name="초기화")
-
-# tree.add_command(show_stats, name="통계")
-# tree.add_command(show_stats, name="profile")
-# tree.add_command(show_stats, name="스텟")
-
-# tree.add_command(leaderboard, name="리더보드")
-# tree.add_command(leaderboard, name="lb")
-
-alias_guess = discord.app_commands.Command(
-    name="guess",
-    description="Submit your Wordle guess (alias)",
-    callback=guess_word.callback
-)
-tree.add_command(alias_guess)
-
-alias_guess2 = discord.app_commands.Command(
-    name="추측",
-    description="Submit your Wordle guess (alias)",
-    callback=guess_word.callback
-)
-tree.add_command(alias_guess2)
-
-
 # ========== event ==========
 @client.event
 async def on_ready():
@@ -783,7 +639,6 @@ async def on_ready():
 
 # ========== run bot ==========
 client.run(os.environ.get("DISCORD_BOT_TOKEN"))
-
 
 ## TODOS
 
