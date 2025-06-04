@@ -23,7 +23,7 @@ DATA_FOLDER = "wordle_data"
 VALID_WORDS = set()
 TODAYS_WORD = ""
 DEBUG=True
-SOFT_DEBUG=True
+SOFT_DEBUG=False
 ISLOADING=True
 FIELDS = {
     "user_id": 0,
@@ -111,7 +111,6 @@ def load_valid_words():
     response = requests.get(WORD_LIST_URL)
     if response.status_code == 200:
         VALID_WORDS = set(response.text.strip().split("\n"))
-        print("[Debug] loaded valid wordes")
     else:
         print("Failed to load valid words.")
 
@@ -215,7 +214,6 @@ async def start_daily_reset_task():
         )
         await asyncio.sleep(86400-30*fetchcount)
         fetchcount=0
-
 
 @tree.command(name="start", description=messages["desc_start"])
 async def start_game(interaction: discord.Interaction):
@@ -398,7 +396,8 @@ async def guess_word(interaction: discord.Interaction, word: str):
     elif session["attempts"] >= 6:
         user_data[key]["games_played"] += 1
         user_data[key]["current_streak"] = 0
-        user_data[key]["hardmode_streak"] = 0
+        if not is_hard :
+            user_data[key]["hardmode_streak"] = 0
         user_data[key]["done_today"] = False if DEBUG else True
         sessions[key]["done"] = False if DEBUG else True
         save_user_data(key)
@@ -672,6 +671,16 @@ async def reload_error(interaction: discord.Interaction, e):
     else:
         await interaction.response.send_message(messages["reload_error"], ephemeral=True)
 
+@tree.command(name="help", description=messages["desc_help"])
+async def help(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title=messages["embed_help"],
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="", value=messages["list_help"], inline=False)
+
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ========== event ==========
 @client.event
@@ -682,10 +691,3 @@ async def on_ready():
 
 # ========== run bot ==========
 client.run(os.environ.get("DISCORD_BOT_TOKEN"))
-
-
-"""
-
-2. /stats 하드모드 개선
-
-"""

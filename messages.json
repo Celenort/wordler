@@ -50,6 +50,9 @@
     "reload_error": "봇 재부팅 과정에서 오류가 발생했습니다.",
     "loading": "봇이 현재 새로운 단어를 불러오는 중입니다. 잠시 뒤에 다시 시도해주세요.",
     "total_points": ":dollar: 합계 점수 : {score:.1f}",
-    "histograms": ":bar_chart: 히스토그램"
+    "histograms": ":bar_chart: 히스토그램",
+    "embed_help": "워들 봇 도움말",
+    "desc_help": "워들 봇 명령어 사용법과 도움말을 출력합니다.",
+    "list_help": "**/start** : 워들을 시작합니다.\n**/w [word]**: 5글자 단어로 guess합니다.\n**/share**: 결과를 채팅창에 공유합니다.\n**/leaderboard [share=False]**: 서버 리더보드를 출력합니다.\n**/stats [hard=False] [share=False]**: 본인의 워들 통계를 출력합니다.\n**/status**: 오늘 워들 상태를 출력합니다. 워들 플레이 중 창이 사라졌거나 플레이 기록을 확인할 때 사용가능합니다."
   }
   
