@@ -1,2 +1,3 @@
 wordle_data/
 __pycache__/
+wordle.db

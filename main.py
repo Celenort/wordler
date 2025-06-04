@@ -11,6 +11,8 @@ import sys
 from hardmode import check_hard_mode_compliance, calculate_score
 import json
 from utils import *
+from database import get_db_connection, init_db
+from copy import deepcopy
 
 # invitation link : https://discord.com/oauth2/authorize?client_id=1365698732443570267
 
@@ -21,6 +23,8 @@ DATA_FOLDER = "wordle_data"
 VALID_WORDS = set()
 TODAYS_WORD = ""
 DEBUG=True
+SOFT_DEBUG=True
+ISLOADING=True
 FIELDS = {
     "user_id": 0,
     "last_play_date": "",
@@ -37,9 +41,10 @@ FIELDS = {
     "score": 0.0,
     "hardmode_successes": 0,
     "hardmode_streak": 0,
-    "hardmode_games": 0
+    "hardmode_games": 0,
+    "hardmode_max_streak": 0
 }
-DEBUG_WORD='quash'
+DEBUG_WORD='cease'
 user_data = {}
 sessions = {}
 
@@ -67,6 +72,31 @@ USE_TO_THREAD = False
 if sys.version_info >= (3, 9):
     USE_TO_THREAD=True
 
+async def initialize_bot():
+    global TODAYS_WORD, ISLOADING
+    ISLOADING=True
+    await client.change_presence(
+        status=discord.Status.dnd,
+        activity=discord.Game(name=messages["dnd"])
+    )
+
+
+    if DEBUG or SOFT_DEBUG:
+        TODAYS_WORD = DEBUG_WORD
+    else:
+        TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
+    load_valid_words()
+    init_db() 
+    load_user_data()
+
+    await client.change_presence(
+        status=discord.Status.online,
+        activity=discord.Game(name=messages["online"])
+    )
+
+    await tree.sync()
+    ISLOADING=False
+
 async def to_thread_equivalent(func):
     if USE_TO_THREAD :
         return await asyncio.to_thread(func)
@@ -81,98 +111,65 @@ def load_valid_words():
     response = requests.get(WORD_LIST_URL)
     if response.status_code == 200:
         VALID_WORDS = set(response.text.strip().split("\n"))
+        print("[Debug] loaded valid wordes")
     else:
         print("Failed to load valid words.")
 
-def ensure_data_folder():
-    if not os.path.exists(DATA_FOLDER):
-        os.makedirs(DATA_FOLDER)
-
 def load_user_data():
-    ensure_data_folder()
-    for filename in os.listdir(DATA_FOLDER):
-        if filename.endswith(".csv"):
-            guild_id = int(filename.replace(".csv", ""))
-            fullpath = os.path.join(DATA_FOLDER, filename)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM user_stats")
+    rows = cur.fetchall()
+    conn.close()
 
-            with open(fullpath, newline="", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                fieldnames = reader.fieldnames or []
+    for row in rows:
+        key = (row["guild_id"], row["user_id"])
+        record = dict(row)
 
-                updated = False
-                updated_rows = []
+        for field in ["board", "keyboard"]:
+            try:
+                if isinstance(record.get(field), str) and record[field]:
+                    record[field] = json.loads(record[field])
+            except json.JSONDecodeError:
+                record[field] = [] if field == "board" else {}
 
-                for row in reader:
-                    user_id = int(row["user_id"])
-                    new_row = {}
-
-                    for key, default in FIELDS.items():
-                        if key not in row or row[key] == "":
-                            updated = True
-                            value = default
-                        else:
-                            value = row[key]
-
-                        if key == "done_today" :
-                            new_row[key] = value
-
-                        # Parse string -> correct type
-                        elif isinstance(default, int):
-                            new_row[key] = int(value)
-                        elif isinstance(default, float):
-                            new_row[key] = float(value)
-                        elif isinstance(default, list):
-                            new_row[key] = json.loads(value) if value else []
-                        elif isinstance(default, dict):
-                            new_row[key] = json.loads(value) if value else {}
-                        elif isinstance(default, bool):
-                            new_row[key] = str(value).lower() in ("true", "1", "yes")
-                        else:
-                            new_row[key] = value
-
-                    user_data[(guild_id, user_id)] = new_row
-                    updated_rows.append(new_row)
-
-                # case when updated
-                if updated:
-                    with open(fullpath, "w", newline="", encoding="utf-8") as wf:
-                        writer = csv.DictWriter(wf, fieldnames=list(FIELDS.keys()))
-                        writer.writeheader()
-                        for row in updated_rows:
-                            row = row.copy()
-                            row["board"] = json.dumps(row.get("board", []))
-                            row["keyboard"] = json.dumps(row.get("keyboard", {}))
-                            writer.writerow(row)
+        user_data[key] = record
 
 def save_user_data(key=None):
-    ensure_data_folder()
-    
-    if key is None:
-        guild_users = {}
-        for (guild_id, user_id), data in user_data.items():
-            guild_users.setdefault(guild_id, []).append({"user_id": user_id, **data})
-    else:
-        if key not in user_data:
-            print(f"[WARN] save_user_data: {key} not found")
-            return
-        guild_users = {guild_id: []}
-        for (g_id, u_id), data in user_data.items():
-            if g_id == guild_id:
-                guild_users[guild_id].append({"user_id": u_id, **data})
+    if key not in user_data:
+        return
+    data = user_data[key].copy()
 
-    for guild_id, users in guild_users.items():
-        with open(os.path.join(DATA_FOLDER, f"{guild_id}.csv"), "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=list(FIELDS.keys()))
-            writer.writeheader()
-            for user in users:
-                row = user.copy()
-                row["board"] = json.dumps(user.get("board", []))
-                row["keyboard"] = json.dumps(user.get("keyboard", {}))
-                writer.writerow(row)
+    #  ensure primary keys are included
+    guild_id, user_id = key
+    data["guild_id"] = guild_id
+    data["user_id"] = user_id
+
+    #  serialize complex types
+    for field in ["board", "keyboard"]:
+        if isinstance(data.get(field), (list, dict)):
+            data[field] = json.dumps(data[field])
+
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    columns = ', '.join(data.keys())
+    placeholders = ', '.join(['?'] * len(data))
+    update_clause = ', '.join([f"{k}=excluded.{k}" for k in data.keys()])
+    values = list(data.values())
+
+    c.execute(f'''
+        INSERT INTO user_stats ({columns})
+        VALUES ({placeholders})
+        ON CONFLICT(guild_id, user_id)
+        DO UPDATE SET {update_clause}
+    ''', values)
+
+    conn.commit()
+    conn.close()
 
 async def start_daily_reset_task():
     global TODAYS_WORD
-
     kst = pytz.timezone('Asia/Seoul')
     now = datetime.now(kst)
     tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -182,7 +179,8 @@ async def start_daily_reset_task():
     await asyncio.sleep(seconds_until_midnight+10)
 
     while True:
-        global sessions
+        global sessions, ISLOADING
+        ISLOADING=True
         print("[INFO] KST 00:00. refresh answer")
         await client.change_presence(
             status=discord.Status.idle,
@@ -205,6 +203,7 @@ async def start_daily_reset_task():
         TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
 
         sessions = {} # reset sessions
+        ISLOADING=False
         fetchcount = 0
         if temp == TODAYS_WORD :
             await asyncio.sleep(10)
@@ -217,27 +216,19 @@ async def start_daily_reset_task():
         await asyncio.sleep(86400-30*fetchcount)
         fetchcount=0
 
+
 @tree.command(name="start", description=messages["desc_start"])
 async def start_game(interaction: discord.Interaction):
+    if ISLOADING or not TODAYS_WORD:
+        await interaction.response.send_message(messages["loading"], ephemeral=True)
+        return
+
     key = (interaction.guild_id, interaction.user.id)
     today = str(datetime.today().date())
 
     if key not in user_data:
         # reset user
-        user_data[key] = {
-            "last_play_date": "",
-            "current_streak": 0,
-            "max_streak": 0,
-            "games_played": 0,
-            "wins": 0,
-            "attempts": 0,
-            "board": "",
-            "keyboard": "",
-            "done_today": False,
-            "n1": 0, "n2": 0, "n3": 0, "n4": 0, "n5": 0, "n6": 0,
-            "score": 0.0,
-            "hardmode_successes": 0
-        }
+        user_data[key] = deepcopy(FIELDS) 
 
     data = user_data[key]
 
@@ -288,6 +279,9 @@ async def start_game(interaction: discord.Interaction):
 
 @tree.command(name="w", description=messages["desc_write"])
 async def guess_word(interaction: discord.Interaction, word: str):
+    if ISLOADING or not TODAYS_WORD:
+        await interaction.response.send_message(messages["loading"], ephemeral=True)
+        return
     key = (interaction.guild_id, interaction.user.id)
 
     if key not in sessions:
@@ -357,6 +351,8 @@ async def guess_word(interaction: discord.Interaction, word: str):
 
         if is_hard :
             user_data[key]["hardmode_streak"] += 1
+            if user_data[key]["hardmode_max_streak"] < user_data[key]["hardmode_streak"] :
+                user_data[key]["hardmode_max_streak"] = user_data[key]["hardmode_streak"]
         else :
             user_data[key]["hardmode_streak"] = 0
         attempts_left = 6 - session["attempts"] + 1
@@ -369,6 +365,7 @@ async def guess_word(interaction: discord.Interaction, word: str):
 
         # Applying score
         user_data[key]["score"] += score_gained
+        score = user_data[key]["score"]
         if is_hard:
             user_data[key]["hardmode_successes"] += 1
 
@@ -390,6 +387,11 @@ async def guess_word(interaction: discord.Interaction, word: str):
         embed.add_field(
             name=messages["earned_points"],
             value=messages["earned_desc"].format(attempts_left=attempts_left, streak_mult=streak_mult, hard_mult=hard_mult, score_gained=score_gained),
+            inline=False
+        )
+        embed.add_field(
+            name=messages["total_points"].format(score=score),
+            value="",
             inline=False
         )
 
@@ -491,17 +493,16 @@ async def show_current_progress(interaction: discord.Interaction):
 @tree.command(name="reset", description=messages["desc_reset"])
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def reset(interaction: discord.Interaction):
-    guid = interaction.guild_id
-    global user_data, sessions
-    csvpath = DATA_FOLDER + '/' + str(guid) + '.csv'
-    try:
-        os.remove(csvpath)
-        user_data = {}
-        sessions = {}
+    try :
+        guid = interaction.guild_id
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM user_stats WHERE guild_id = ?", (guid,))
+        conn.commit()
+        conn.close()
         await interaction.response.send_message(messages["rmdir"], ephemeral=False if DEBUG else True)
     except Exception as e:
         await interaction.response.send_message(messages["rmdirfail"], ephemeral=False if DEBUG else True)
-
 # raise error when not permitted
 @reset.error
 async def reset(interaction: discord.Interaction, e):
@@ -522,44 +523,85 @@ async def show_stats(interaction: discord.Interaction, share : bool = False, har
     elif data['games_played'] == 0 :
         await interaction.response.send_message(messages["no_play_record"], ephemeral=False if DEBUG else True)
         return
+    if hard and data['hardmode_games'] == 0 :
+        await interaction.response.send_message(messages["no_hard_play_record"], ephemeral=False if DEBUG else True)
+        return
+    if not hard :
+        embed = discord.Embed(
+            title=messages["stats_title"].format(name=interaction.user.display_name),
+            color=discord.Color.green()
+        )
+        # add profile
+        avatar_url = interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url
 
-    embed = discord.Embed(
-        title=messages["stats_title"].format(name=interaction.user.display_name),
-        color=discord.Color.green()
-    )
-    # add profile
-    avatar_url = interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url
+        embed.set_author(name=interaction.user.display_name, icon_url=avatar_url)
+        avg_perf = calculate_mean(user_data[key])
+        name = messages["player_stats"]
+        value = messages["stats"].format(score=data['score'], played=str(data['games_played']), wins = str(data['wins']), streak = str(data['current_streak']), max_streak=str(data['max_streak']), wr = str(round(data['wins'] / data['games_played'] * 100, 2)), avg = str(round(avg_perf, 2)))
+        embed.add_field(name=name, value=value, inline=False)
+        hist_out, max_val = render_histogram(user_data[key])
+        values = get_values(user_data[key])
 
-    embed.set_author(name=interaction.user.display_name, icon_url=avatar_url)
-    avg_perf = calculate_mean(user_data[key])
-    name = messages["player_stats"]
-    value = messages["stats"].format(played=str(data['games_played']), wins = str(data['wins']), hard= str(data['hardmode_successes']), streak = str(data['current_streak']), max_streak=str(data['max_streak']), wr = str(round(data['wins'] / data['games_played'] * 100, 2)), avg = str(round(avg_perf, 2)))
-    embed.add_field(name=name, value=value, inline=False)
-    hist_out, max_val = render_histogram(user_data[key])
-    values = get_values(user_data[key])
+        # count failures
+        failures = data["games_played"] - sum(int(v) for v in values)
 
-    # count failures
-    failures = data["games_played"] - sum(int(v) for v in values)
+        fail_bar = None
+        if max_val == 0:
+            fail_bar = 0
+        else:
+            fail_bar = int((failures / max_val) * 8)
+            fail_bar = max(fail_bar, 1) if failures > 0 else 0  # display at least 1 (with nonzero)
+        # print hist
+        hist_value = (
+            ":one: | " + ":green_square:" * hist_out[0] + f" ({values[0]})\n" +
+            ":two: | " + ":green_square:" * hist_out[1] + f" ({values[1]})\n" +
+            ":three: | " + ":green_square:" * hist_out[2] + f" ({values[2]})\n" +
+            ":four: | " + ":green_square:" * hist_out[3] + f" ({values[3]})\n" +
+            ":five: | " + ":green_square:" * hist_out[4] + f" ({values[4]})\n" +
+            ":six: | " + ":green_square:" * hist_out[5] + f" ({values[5]})\n" +
+            ":regional_indicator_x: | " + ":yellow_square:" * fail_bar + f" ({failures})\n"
+        )
+        embed.add_field(name=messages["histograms"], value=hist_value, inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
+        return
+    else :
+        embed = discord.Embed(
+            title=messages["stats_hard_title"].format(name=interaction.user.display_name),
+            color=discord.Color.yellow()
+        )
+        # add profile
+        avatar_url = interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url
 
-    fail_bar = None
-    if max_val == 0:
-        fail_bar = 0
-    else:
-        fail_bar = int((failures / max_val) * 8)
-        fail_bar = max(fail_bar, 1) if failures > 0 else 0  # display at least 1 (with nonzero)
-    # print hist
-    hist_value = (
-        ":one: | " + ":green_square:" * hist_out[0] + f" ({values[0]})\n" +
-        ":two: | " + ":green_square:" * hist_out[1] + f" ({values[1]})\n" +
-        ":three: | " + ":green_square:" * hist_out[2] + f" ({values[2]})\n" +
-        ":four: | " + ":green_square:" * hist_out[3] + f" ({values[3]})\n" +
-        ":five: | " + ":green_square:" * hist_out[4] + f" ({values[4]})\n" +
-        ":six: | " + ":green_square:" * hist_out[5] + f" ({values[5]})\n" +
-        ":regional_indicator_x: | " + ":yellow_square:" * fail_bar + f" ({failures})\n"
-    )
-    embed.add_field(name=":bar_chart: Histograms", value=hist_value, inline=False)
-    await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
-    return
+        embed.set_author(name=interaction.user.display_name, icon_url=avatar_url)
+        avg_perf = calculate_mean(user_data[key],hard=True)
+        name = messages["player_hard_stats"]
+        value = messages["stats_hard"].format(score=data['score'], played=str(data['hardmode_games']), wins = str(data['hardmode_successes']), streak = str(data['hardmode_streak']), max_streak=str(data['hardmode_max_streak']), wr = str(round(data['hardmode_successes'] / data['hardmode_games'] * 100, 2)), avg = str(round(avg_perf, 2)))
+        embed.add_field(name=name, value=value, inline=False)
+        hist_out, max_val = render_histogram(user_data[key], hard=True)
+        values = get_values(user_data[key], hard=True)
+
+        # count failures
+        failures = data["hardmode_games"] - sum(int(v) for v in values)
+
+        fail_bar = None
+        if max_val == 0:
+            fail_bar = 0
+        else:
+            fail_bar = int((failures / max_val) * 8)
+            fail_bar = max(fail_bar, 1) if failures > 0 else 0  # display at least 1 (with nonzero)
+        # print hist
+        hist_value = (
+            ":one: | " + ":red_square:" * hist_out[0] + f" ({values[0]})\n" +
+            ":two: | " + ":red_square:" * hist_out[1] + f" ({values[1]})\n" +
+            ":three: | " + ":red_square:" * hist_out[2] + f" ({values[2]})\n" +
+            ":four: | " + ":red_square:" * hist_out[3] + f" ({values[3]})\n" +
+            ":five: | " + ":red_square:" * hist_out[4] + f" ({values[4]})\n" +
+            ":six: | " + ":red_square:" * hist_out[5] + f" ({values[5]})\n" +
+            ":regional_indicator_x: | " + ":yellow_square:" * fail_bar + f" ({failures})\n"
+        )
+        embed.add_field(name=messages["histograms"], value=hist_value, inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
+        return
 
 @tree.command(name="leaderboard", description=messages["desc_leaderboard"])
 async def leaderboard(interaction: discord.Interaction, share: bool = False):
@@ -612,39 +654,38 @@ async def leaderboard(interaction: discord.Interaction, share: bool = False):
     eph = not share
     await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else eph)
 
+
+@tree.command(name="reload", description=messages["desc_reload"])
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def reload(interaction: discord.Interaction):
+    try:
+        await initialize_bot()
+        await interaction.response.send_message(messages["reload_success"], ephemeral=True)
+    except Exception as e:
+        print(f"[ERROR] reload 실패: {e}")
+        await interaction.response.send_message(messages["reload_error"], ephemeral=True)
+
+@reload.error
+async def reload_error(interaction: discord.Interaction, e):
+    if isinstance(e, discord.app_commands.errors.MissingPermissions):
+        await interaction.response.send_message(messages["rmdirnoperm"], ephemeral=True)
+    else:
+        await interaction.response.send_message(messages["reload_error"], ephemeral=True)
+
+
 # ========== event ==========
 @client.event
 async def on_ready():
-    global TODAYS_WORD
-    print(f"Logged in as {client.user}")
-    await client.change_presence(
-            status=discord.Status.dnd,
-            activity=discord.Game(name=messages["dnd"])
-        )
-
-    load_valid_words()
-    if DEBUG :
-        TODAYS_WORD = DEBUG_WORD
-    else :
-        TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
-    load_user_data()
-
-    await client.change_presence(
-        status=discord.Status.online,
-        activity=discord.Game(name=messages["online"])
-    )
-
+    print(f"Logged in as {client.user}") 
+    await initialize_bot()
     asyncio.create_task(start_daily_reset_task())
-    await tree.sync()
 
 # ========== run bot ==========
 client.run(os.environ.get("DISCORD_BOT_TOKEN"))
 
-## TODOS
 
 """
 
-1. 새로운 워드 로딩 중일 때(자정, 초기 시작시) /w 나 /start 블락하기
 2. /stats 하드모드 개선
 
 """

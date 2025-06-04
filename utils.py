@@ -3,9 +3,12 @@
 def truncate_name(name: str, limit: int = 14) -> str:
     return name if len(name) <= limit else name[:limit - 1] + "…"
 
-def render_histogram(data: dict):
+def render_histogram(data: dict, hard : bool = False):
     # 1. n1~n6 
-    keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
+    if hard :
+        keys = ["h1", "h2", "h3", "h4", "h5", "h6"]
+    else :
+        keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
     values = [data.get(k, 0) for k in keys]
     
     # 2. find max
@@ -25,13 +28,19 @@ def render_histogram(data: dict):
     
     return output, max_val
 
-def get_values(data: dict):
-    keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
+def get_values(data: dict, hard=False):
+    if hard :
+        keys = ["h1", "h2", "h3", "h4", "h5", "h6"]
+    else :
+        keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
     values = [str(data.get(k, 0)) for k in keys]  # ✅ 괄호 위치 수정
     return values
 
-def calculate_mean(data: dict):
-    keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
+def calculate_mean(data: dict, hard: bool = False):
+    if hard :
+        keys = ["h1", "h2", "h3", "h4", "h5", "h6"]
+    else :
+        keys = ["n1", "n2", "n3", "n4", "n5", "n6"]
     values = [data.get(k, 0) for k in keys]
     if sum(values) == 0 :
         return 0

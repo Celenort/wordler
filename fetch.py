@@ -6,6 +6,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 import time
 import os
 
+DISPLAY_TODAYS_WORD_IN_CONSOLE=False
+
 # Suppress TensorFlow log levels (0=all, 1=INFO hidden, 2=WARNING hidden, 3=ERROR only)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
@@ -33,7 +35,9 @@ def fetch_todays_word():
         time.sleep(2.5)
         print(f"[INFO] Initial popup closed")
     except Exception as e:
-        print(f"[INFO] No initial popup or skipped: {e}")
+        first_line = str(e).split('\n', 1)[0]
+
+        print(f"[INFO] No initial popup or skipped: {first_line}")
 
     # Click "Play" button
     try:
@@ -97,7 +101,10 @@ def fetch_todays_word():
     try:
         toast_div = driver.find_element(By.CSS_SELECTOR, "div[class^='Toast-module_toast__']")
         toast_text = toast_div.text.strip()
-        print(f"[INFO] Toast text: {toast_text.lower()}")
+        if DISPLAY_TODAYS_WORD_IN_CONSOLE :
+            print(f"[INFO] Toast text: {toast_text.lower()}")
+        else :
+            print("[INFO] Toast text: OOOOO(Blurred)")
         return toast_text.lower()
     except Exception as e:
         print(f"[ERROR] Cannot read toast message: {e}")
