@@ -104,7 +104,7 @@ def parse_board_colors(board):
     # 1. JSON chars to list
  
     results = []
-
+    import re
     # 2. enumerating each row
     for line in board:
         colors = []
