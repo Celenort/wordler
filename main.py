@@ -32,7 +32,6 @@ FIELDS = {
     "max_streak": 0,
     "games_played": 0,
     "wins": 0,
-    "attempts": 0,
     "board": [],
     "keyboard": {},
     "done_today": False,
@@ -232,13 +231,11 @@ async def start_game(interaction: discord.Interaction):
 
     if data["last_play_date"] != today:
         # if new day, reset progress
-        data["attempts"] = 0
         data["board"] = []
         data["keyboard"] = {}
         data["last_play_date"] = today
         data["done_today"] = False
     elif DEBUG :
-        data["attempts"] = 0
         data["board"] = []
         data["keyboard"] = {}
         data["last_play_date"] = today
@@ -246,7 +243,6 @@ async def start_game(interaction: discord.Interaction):
 
     # sessions recovery
     sessions[key] = {
-        "attempts": data.get("attempts", 0),
         "board": data.get("board", ""),
         "keyboard": data.get("keyboard", ""),
         "done": data.get("done_today", False)
@@ -302,7 +298,6 @@ async def guess_word(interaction: discord.Interaction, word: str):
     feedback = format_guess_feedback(word, TODAYS_WORD)
     renderboard = feedback_to_render(feedback, word, emojis)
     session["board"].append(renderboard)
-    session["attempts"] += 1
 
     # update_keyboard
     for idx, c in enumerate(word):
@@ -353,7 +348,7 @@ async def guess_word(interaction: discord.Interaction, word: str):
                 user_data[key]["hardmode_max_streak"] = user_data[key]["hardmode_streak"]
         else :
             user_data[key]["hardmode_streak"] = 0
-        attempts_left = 6 - session["attempts"] + 1
+        attempts_left = 6 - len(session["board"]) + 1
         score_gained, streak_mult, hard_mult = calculate_score(
             attempts_left,
             user_data[key]["current_streak"],
@@ -393,7 +388,7 @@ async def guess_word(interaction: discord.Interaction, word: str):
             inline=False
         )
 
-    elif session["attempts"] >= 6:
+    elif len(session["board"]) == 6:
         user_data[key]["games_played"] += 1
         user_data[key]["current_streak"] = 0
         if not is_hard :
@@ -406,7 +401,7 @@ async def guess_word(interaction: discord.Interaction, word: str):
 
         embed.add_field(name=messages['game_over'].format(word=TODAYS_WORD),value="",  inline=False)
     else:
-        embed.add_field(name=':pushpin: ' + messages['remaining_attempts'].format(attempts=6 - session['attempts']),value="",  inline=False)
+        embed.add_field(name=':pushpin: ' + messages['remaining_attempts'].format(attempts=6 - len(session["board"])),value="",  inline=False)
         user_data[key]["board"] = session["board"]
         user_data[key]["keyboard"] = session["keyboard"]
         save_user_data(key)
@@ -487,7 +482,7 @@ async def show_current_progress(interaction: discord.Interaction):
     embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
 
     if user_data[key]["done_today"] :
-        attempts_left = 6 - session["attempts"] + 1
+        attempts_left = 6 - len(session["board"]) + 1
         is_hard = check_hard_mode_compliance(guesses, feedbacks)
         score_gained, streak_mult, hard_mult = calculate_score(
             attempts_left,
