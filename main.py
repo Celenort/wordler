@@ -482,6 +482,8 @@ async def show_current_progress(interaction: discord.Interaction):
     embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
 
     if user_data[key]["done_today"] :
+        guesses = session.get("raw_guesses", [])
+
         attempts_left = 6 - len(session["board"]) + 1
         is_hard = check_hard_mode_compliance(guesses, feedbacks)
         score_gained, streak_mult, hard_mult = calculate_score(
