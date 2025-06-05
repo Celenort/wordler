@@ -485,8 +485,21 @@ async def show_current_progress(interaction: discord.Interaction):
     embed = discord.Embed(title=messages["wordle"], color=0x00ff00)
     embed.add_field(name=messages["status"] + plus, value=board_text, inline=False)
     embed.add_field(name=messages["keyboard_status"], value=keyboard_text, inline=False)
-    
 
+    if user_data[key]["done_today"] :
+        attempts_left = 6 - session["attempts"] + 1
+        is_hard = check_hard_mode_compliance(guesses, feedbacks)
+        score_gained, streak_mult, hard_mult = calculate_score(
+            attempts_left,
+            user_data[key]["current_streak"],
+            user_data[key]["hardmode_streak"],
+            is_hard
+        )
+        embed.add_field(
+            name=messages["earned_points"],
+            value=messages["earned_desc"].format(attempts_left=attempts_left, streak_mult=streak_mult, hard_mult=hard_mult, score_gained=score_gained),
+            inline=False
+        )
     await interaction.response.send_message(embed=embed, ephemeral=False if DEBUG else True)
 
 @tree.command(name="reset", description=messages["desc_reset"])
