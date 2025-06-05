@@ -1,3 +1,10 @@
+CONSECUTIVE_STREAK_BASE = 1.0
+CONSECUTIVE_STREAK_SCALING = 0.1
+CONSECUTIVE_STREAK_MAX = 2.0
+HARDMODE_STREAK_BASE = 1.5
+HARDMODE_STREAK_SCALING = 0.05
+HARDMODE_STREAK_MAX = 3.0
+
 def check_hard_mode_compliance(guesses, feedbacks):
     known_greens = {}
     known_yellows = set()
@@ -29,7 +36,7 @@ def check_hard_mode_compliance(guesses, feedbacks):
 
 
 def calculate_score(attempts_left, streak_count, hardstreak_count, is_hardmode):
-    streak_multiplier = min(1.0 + (streak_count / 10.0), 2.0)
-    hardstreak_multiplier = min(2.0 + (hardstreak_count / 10.0), 3.0)
+    streak_multiplier = min(CONSECUTIVE_STREAK_BASE + (streak_count * CONSECUTIVE_STREAK_SCALING), CONSECUTIVE_STREAK_MAX)
+    hardstreak_multiplier = min(HARDMODE_STREAK_BASE + (hardstreak_count * HARDMODE_STREAK_SCALING), HARDMODE_STREAK_MAX)
     hard_multiplier = hardstreak_multiplier if is_hardmode else 1.0
     return round(attempts_left * streak_multiplier * hard_multiplier, 1), streak_multiplier, hard_multiplier
