@@ -485,6 +485,7 @@ async def show_current_progress(interaction: discord.Interaction):
         guesses = session.get("raw_guesses", [])
 
         attempts_left = 6 - len(session["board"]) + 1
+        feedbacks = [format_guess_feedback(g, TODAYS_WORD) for g in guesses]
         is_hard = check_hard_mode_compliance(guesses, feedbacks)
         score_gained, streak_mult, hard_mult = calculate_score(
             attempts_left,
