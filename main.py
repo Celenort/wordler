@@ -71,6 +71,45 @@ USE_TO_THREAD = False
 if sys.version_info >= (3, 9):
     USE_TO_THREAD=True
 
+async def to_thread_equivalent(func, *args, **kwargs):
+    """
+    Run blocking functions off the event loop.
+    """
+    if USE_TO_THREAD :
+        return await asyncio.to_thread(func, *args, **kwargs)
+    else :
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+
+# new helper: fetch with retries & backoff
+async def fetch_todays_with_retries(max_attempts: int = 6, initial_delay: int = 5):
+    """
+    Attempts to fetch today's word using fetch_todays_word in a thread,
+    with exponential backoff. Returns the fetched word or None.
+    """
+    delay = initial_delay
+    for attempt in range(1, max_attempts + 1):
+        try:
+            candidate = await to_thread_equivalent(fetch_todays_word)
+            print(f"[DEBUG] fetch attempt {attempt}: {candidate}")
+            if candidate:
+                return candidate
+        except Exception as e:
+            print(f"[WARN] fetch attempt {attempt} failed: {e}")
+        if attempt < max_attempts:
+            await asyncio.sleep(delay)
+            delay *= 2
+    print("[ERROR] fetch_todays_with_retries: all attempts failed")
+    return None
+
+# new helper: persist all users
+def save_all_user_data():
+    """
+    Persist all in-memory user_data entries to DB.
+    """
+    for key in list(user_data.keys()):
+        save_user_data(key)
+
 async def initialize_bot():
     global TODAYS_WORD, ISLOADING
     ISLOADING=True
@@ -79,12 +118,20 @@ async def initialize_bot():
         activity=discord.Game(name=messages["dnd"])
     )
 
-
     if DEBUG or SOFT_DEBUG:
         TODAYS_WORD = DEBUG_WORD
     else:
-        TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
-    load_valid_words()
+        # fetch todays word with retries off the event loop
+        candidate = await fetch_todays_with_retries()
+        if candidate:
+            TODAYS_WORD = candidate
+        else:
+            # fallback: try one last time in thread then keep empty and log
+            print("[ERROR] initialize_bot: failed to fetch todays word; leaving TODAYS_WORD empty")
+            TODAYS_WORD = ""
+
+    # load valid words off the event loop (requests is blocking)
+    await to_thread_equivalent(load_valid_words)
     init_db() 
     load_user_data()
 
@@ -96,22 +143,21 @@ async def initialize_bot():
     await tree.sync()
     ISLOADING=False
 
-async def to_thread_equivalent(func):
-    if USE_TO_THREAD :
-        return await asyncio.to_thread(func)
-    else :
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, func)
 
 # ========== Utils ==========
 
+
 def load_valid_words():
     global VALID_WORDS
-    response = requests.get(WORD_LIST_URL)
-    if response.status_code == 200:
-        VALID_WORDS = set(response.text.strip().split("\n"))
-    else:
-        print("Failed to load valid words.")
+    try:
+        response = requests.get(WORD_LIST_URL, timeout=10)
+        if response.status_code == 200:
+            VALID_WORDS = set(response.text.strip().split("\n"))
+            print(f"[INFO] Loaded {len(VALID_WORDS)} valid words")
+        else:
+            print(f"[WARN] Failed to load valid words. status={response.status_code}")
+    except Exception as e:
+        print(f"[ERROR] load_valid_words failed: {e}")
 
 def load_user_data():
     conn = get_db_connection()
@@ -174,45 +220,83 @@ async def start_daily_reset_task():
     seconds_until_midnight = (tomorrow - now).total_seconds()
 
     print(f"[INFO] TIME until midnight: {seconds_until_midnight:.0f}초")
-    await asyncio.sleep(seconds_until_midnight+10)
+    await asyncio.sleep(seconds_until_midnight + 10)
 
     while True:
         global sessions, ISLOADING
-        ISLOADING=True
-        print("[INFO] KST 00:00. refresh answer")
+        ISLOADING = True
+        print("[INFO] KST 00:00. starting refresh sequence")
         await client.change_presence(
             status=discord.Status.idle,
             activity=discord.Game(name=messages["idle"])
         )
+
         # calculate yesterday's date
         yesterday = (datetime.now(kst) - timedelta(days=1)).date()
 
-        # CS to 0
+        # reset current_streak to 0 where appropriate
         for key, data in user_data.items():
             last_play_date = data.get("last_play_date")
-            if not last_play_date or datetime.strptime(last_play_date, "%Y-%m-%d").date() != yesterday:
-                if data.get("current_streak", 0) > 0:
-                    print(f"[INFO] Resetting streak for user {key}")
-                    data["current_streak"] = 0
-
-        save_user_data()
+            try:
+                if not last_play_date or datetime.strptime(last_play_date, "%Y-%m-%d").date() != yesterday:
+                    if data.get("current_streak", 0) > 0:
+                        print(f"[INFO] Resetting streak for user {key}")
+                        data["current_streak"] = 0
+            except Exception as e:
+                print(f"[WARN] parsing last_play_date for {key}: {e}")
+        # persist all user changes
+        save_all_user_data()
 
         temp = TODAYS_WORD
-        TODAYS_WORD = await to_thread_equivalent(fetch_todays_word)
 
-        sessions = {} # reset sessions
-        ISLOADING=False
-        fetchcount = 0
-        if temp == TODAYS_WORD :
-            await asyncio.sleep(10)
-            TODAYS_WORD = fetch_todays_word()
-            fetchcount +=1
+        # robust fetch with retries
+        new_word = await fetch_todays_with_retries()
+        if new_word and new_word != temp:
+            TODAYS_WORD = new_word
+            print(f"[INFO] Updated TODAYS_WORD -> {TODAYS_WORD}")
+            sessions = {}  # reset sessions only after confirmed new word
+            # change presence back to online and clear loading
+            ISLOADING = False
+            await client.change_presence(
+                status=discord.Status.online,
+                activity=discord.Game(name=messages["online"])
+            )
+            # sleep until next day
+            await asyncio.sleep(86400)
+            continue
+        elif new_word == temp and temp:
+            print("[INFO] fetched same word as previous day; will retry shortly")
+        else:
+            print("[ERROR] failed to fetch a new TODAYS_WORD; will retry in 60s")
+
+        # If we are here, either fetch returned same word or failed.
+        # Keep old word and schedule short retries until a new word is available.
+        ISLOADING = False
         await client.change_presence(
             status=discord.Status.online,
             activity=discord.Game(name=messages["online"])
         )
-        await asyncio.sleep(86400-30*fetchcount)
-        fetchcount=0
+
+        # short retry loop: try every 60s for up to N times (so we don't spin forever)
+        short_retries = 10
+        for attempt in range(short_retries):
+            await asyncio.sleep(60)
+            print(f"[INFO] short retry {attempt+1}/{short_retries} to fetch new word")
+            candidate = await fetch_todays_with_retries(max_attempts=3, initial_delay=3)
+            if candidate and candidate != temp:
+                # promote new word and reset sessions
+                TODAYS_WORD = candidate
+                sessions = {}
+                print(f"[INFO] Short-retry succeeded. New TODAYS_WORD -> {TODAYS_WORD}")
+                break
+        # After short-retries, sleep until next day's midnight window to try again
+        now = datetime.now(kst)
+        next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        seconds_until_next_midnight = (next_midnight - now).total_seconds()
+        print(f"[INFO] Sleeping {int(seconds_until_next_midnight)}s until next midnight check")
+        await asyncio.sleep(seconds_until_next_midnight + 10)
+
+
 
 @tree.command(name="start", description=messages["desc_start"])
 async def start_game(interaction: discord.Interaction):
